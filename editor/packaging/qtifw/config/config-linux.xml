@@ -9,11 +9,13 @@
     <InstallerWindowIcon>installer-window-icon.png</InstallerWindowIcon>
     <!-- No header pixmap: QWizard does not fit large logos to the page. -->
     <WizardStyle>Modern</WizardStyle>
+    <StyleSheet>installer.qss</StyleSheet>
+    <TitleColor>#f2b84b</TitleColor>
     <WizardDefaultWidth>760</WizardDefaultWidth>
     <WizardDefaultHeight>540</WizardDefaultHeight>
     <WizardMinimumWidth>680</WizardMinimumWidth>
     <WizardMinimumHeight>480</WizardMinimumHeight>
-    <TargetDir>@ApplicationsDir@/JSON API Forge Editor</TargetDir>
+    <TargetDir>@HomeDir@/Applications/JSON API Forge Editor</TargetDir>
     <MaintenanceToolName>JSON-API-Forge-Editor-Maintenance</MaintenanceToolName>
     <RunProgram>@TargetDir@/json-api-forge-editor</RunProgram>
     <RunProgramDescription>Launch JSON API Forge Editor</RunProgramDescription>

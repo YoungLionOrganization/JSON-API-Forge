@@ -124,6 +124,26 @@ bash editor/packaging/qtifw/build-installer.sh \
 
 The helpers consume the same Qt IFW metadata as GitHub Actions. They embed the staged application, platform icons, maintenance/uninstall tool and the repository `LICENSE`; Windows additionally receives Start Menu/Desktop shortcuts. The license is shown as an agreement during setup and is also installed with the product.
 
+The shared Amber Gold / Graphite stylesheet is
+`editor/packaging/qtifw/config/installer.qss`. Both helpers embed it automatically;
+keep it beside the XML configurations. Use the application/window icons for
+branding: do not add a full-size logo as a wizard header pixmap.
+
+Linux defaults to `~/Applications/JSON API Forge Editor` and does not require
+administrator privileges. Choose a writable destination. On Ubuntu 24.04 ARM64,
+install the workflow's native dependencies, then prepare IFW's private TIFF 5
+and WebP 6 compatibility libraries before invoking the builder:
+
+```bash
+ifw_tool_dir=$(bash editor/packaging/qtifw/prepare-linux-tools.sh /path/to/qt-ifw/bin/binarycreator)
+export PATH="$ifw_tool_dir:$PATH"
+```
+
+The helper checks both tool and installer-template dependencies. Do not copy its
+compatibility libraries into the Editor's runtime or replace system libraries.
+On macOS, the builder creates a setup `.app`, then a verified compressed DMG;
+failed DMG creation is retried with the original diagnostic output preserved.
+
 The pinned Qt IFW 4.8.1 macOS installer tool is Intel-only and requires Rosetta
 on Apple Silicon. The packaged Editor itself uses its native ARM64 kit.
 

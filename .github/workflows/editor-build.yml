@@ -96,8 +96,10 @@ jobs:
               "editor/packaging/qtifw/config/config.xml",
               "editor/packaging/qtifw/config/config-linux.xml",
               "editor/packaging/qtifw/config/config-macos.xml",
+              "editor/packaging/qtifw/config/installer.qss",
               "editor/packaging/qtifw/build-installer.ps1",
               "editor/packaging/qtifw/build-installer.sh",
+              "editor/packaging/qtifw/create-dmg.sh",
               "editor/packaging/qtifw/packages/dev.jsonapiforge.editor/meta/package.xml",
               "editor/packaging/qtifw/packages/dev.jsonapiforge.editor/meta/installscript.qs",
               "QT-CREATOR-BUILD-GUIDE.md",
@@ -155,7 +157,7 @@ jobs:
           if links:
               raise SystemExit(f"symlinks are not allowed in Editor source: {links}")
           PY
-          bash -n editor/packaging/qtifw/build-installer.sh
+          for helper in editor/packaging/qtifw/*.sh; do bash -n "$helper"; done
           python -m unittest discover -s editor/tests -p "test_packaging.py" -v
           python scripts/check_manifest.py
           git diff --check
@@ -212,7 +214,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            file libtiff6 libxcb-cursor0 ninja-build qt6-base-dev qt6-base-dev-tools zip
+            file libtiff6 libwebpdemux2 libwebpmux3 libxcb-cursor0 \
+            ninja-build qt6-base-dev qt6-base-dev-tools zip
           # Qt WebEngine is optional on architectures where Ubuntu does not
           # publish the package; the Editor keeps its external-browser fallback.
           sudo apt-get install --no-install-recommends -y qt6-webengine-dev || \
@@ -347,7 +350,8 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          trap 'printf "::error::Linux packaging failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND"' ERR
           mkdir -p artifacts
           bash editor/packaging/linux/bundle-qt.sh stage
           install -m 0755 editor/packaging/linux/launcher.sh stage/json-api-forge-editor
@@ -427,7 +431,8 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          trap 'printf "::error::macOS packaging failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND"' ERR
           mkdir -p artifacts
           app_path="stage/JSON-API-Forge-Editor.app"
           test -d "$app_path"
@@ -443,10 +448,31 @@ jobs:
           archive="JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}.zip"
           ditto -c -k --sequesterRsrc --keepParent stage "artifacts/$archive"
           installer="JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}-setup.dmg"
-          bash editor/packaging/qtifw/build-installer.sh stage "artifacts/$installer" macos
-          hdiutil verify "artifacts/$installer"
+          bash editor/packaging/qtifw/build-installer.sh stage "artifacts/$installer" macos \
+            2>&1 | tee "artifacts/installer-build-${{ matrix.artifact }}.log"
+          mount_point="${{ runner.temp }}/editor-setup-${{ matrix.artifact }}"
+          mkdir -p "$mount_point"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "artifacts/$installer"
+          cleanup_setup() { bash editor/packaging/qtifw/detach-dmg.sh "$mount_point"; }
+          trap cleanup_setup EXIT
+          setup_binary=$(find "$mount_point/JSON API Forge Editor Setup.app/Contents/MacOS" \
+            -type f -perm -111 -print -quit)
+          test -n "$setup_binary"
+          QT_QPA_PLATFORM=offscreen "$setup_binary" --help
+          cleanup_setup
+          trap - EXIT
           (cd artifacts && shasum -a 256 "$archive" > "$archive.sha256")
           (cd artifacts && shasum -a 256 "$installer" > "$installer.sha256")
+      - name: Preserve packaging diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: editor-packaging-diagnostics-${{ matrix.artifact }}
+          path: |
+            artifacts/*.log
+            artifacts/*.png
+          if-no-files-found: warn
+          retention-days: 14
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}

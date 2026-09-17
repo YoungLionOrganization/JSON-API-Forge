@@ -1,37 +1,78 @@
-# Editor v0.5.1 — workflow and installer repair
+# Editor v0.5.1 — workflow and installer theme repair
 
-This source package changes only the Editor component. The product version remains 0.5.1.
-Baseline: `342fd4c7a7862c1c630e2e091c14a32159445373` on the `Editor` branch.
+This package contains only the Editor source tree. The product version remains
+0.5.1. Baseline: `1ffb40d39a09cc6158bd72420ef6ce84416a31e4` on `Editor`.
+Last reviewed: 13 September 2026.
 
-## Confirmed failures and fixes
+## Workflow changes
 
-The [Editor build run](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/runs/34378732238)
-failed on Linux ARM64 because IFW 4.8.1's `binarycreator` needs `libtiff.so.5`,
-whereas Ubuntu 24.04 provides the TIFF 6 ABI. The workflow now obtains the
-SHA256-pinned Ubuntu compatibility package and exposes it only to that tool.
-The Editor's application runtime and the system library installation are unchanged.
-The build tool is started immediately after setup to catch loader failures early.
+The latest [Editor build run](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/runs/34478415153)
+has three failing packaging jobs. Its native Editor tests passed on the platforms
+that reached compilation; CodeQL and the sanitizer job passed as well.
 
-macOS Intel installed IFW successfully, then failed with `hdiutil: Resource busy`
-on detaching the downloaded DMG. Cleanup now retries, then force-detaches only
-that temporary mount. A remaining cleanup failure is reported as a warning;
-missing or unusable IFW tools still fail the job.
+- **Linux x64:** the generated installer's CLI test requested administrator
+  privileges even though the destination was a writable temporary directory.
+  Linux now defaults to `~/Applications/JSON API Forge Editor`, and its staged
+  package metadata does not require administrator rights. The Windows/macOS
+  privilege policy is preserved. The workflow still installs the generated setup
+  and launches the installed Editor; the failing check has not been removed.
+- **Linux ARM64:** IFW 4.8.1's `binarycreator` needs both `libtiff.so.5` and
+  `libwebp.so.6`. The previous repair supplied only TIFF. Both Ubuntu compatibility
+  packages are now SHA256 pinned and kept in a directory used only by the build
+  tool. Noble supplies the other dependencies, including WebP mux/demux. Setup
+  prints and validates the complete dependency closure of `binarycreator` and
+  `installerbase` before compilation, then starts the tool with `--help`.
+  These compatibility libraries are not added to the Editor or its installer.
+- **macOS ARM64:** the packaging step failed without a diagnostic identifying
+  the internal command. [Qt IFW 4.8.1's implementation](https://github.com/qtproject/installer-framework/blob/4.8.1/src/libs/ifwtools/binarycreator.cpp)
+  does not check the exit status or print stderr from its internal `hdiutil`
+  invocation, then deletes the intermediate app bundle. The new builder creates
+  that `.app` explicitly, creates the compressed DMG separately with up to three
+  attempts, and verifies the image. The workflow mounts the result, checks for
+  the launchable setup app and runs its help command. Errors and build logs are
+  retained. The original silent failure's exact `hdiutil` error cannot be recovered
+  from the old log; native macOS confirmation is still required after upload.
 
-The installer had put the full 1024x1024 brand image in `QWizard::LogoPixmap`.
-[Qt's configuration reference](https://doc.qt.io/qtinstallerframework/ifw-globalconfig.html)
-identifies this as a wizard pixmap, rather than an automatically fitted app icon.
-All three installer configurations now use the standard title/content layout
-without header/background pixmaps. Branding remains in the window/application
-icons. Welcome, destination selection, license and navigation controls have room.
+## Installer appearance
 
-Both installer builders reject a stage missing the Editor executable. Linux and
-Windows CI install the generated setup into a temporary destination and launch
-the installed Editor for a screenshot smoke test. Linux bundling also handles
-RPATH dependencies that already point to the destination file.
+All three platforms share `editor/packaging/qtifw/config/installer.qss`:
+Graphite surfaces, Amber Gold titles and primary buttons, readable license and
+destination fields, visible keyboard focus, disabled button states, and a
+matching progress bar. Both builders include the stylesheet in the installer.
 
-## Upload this folder only
+The standard Qt wizard, navigation and license consent remain in place. The
+760x540 logical window size is preserved. Large logo/header/background pixmaps
+remain absent, so they cannot cover the controls again. The Linux corner resize
+grip no longer paints over the Cancel button.
 
-Extract this ZIP into a new folder. Open PowerShell in the extracted
+## Verification performed for this repair
+
+- Both workflows passed actionlint 1.7.12; shell syntax and Editor-only source
+  preflight passed.
+- Eight packaging regression tests passed, including Linux privilege metadata,
+  staged theme, missing payload, DMG retries, creation failure, verification
+  failure and mount cleanup.
+- Official SHA256-verified IFW 4.8.1 Linux x64 created and installed a test
+  payload using the production packaging scripts.
+- The actual ARM64 `binarycreator` ran under QEMU against Ubuntu Noble libraries
+  plus the two private compatibility packages. It created an ARM64 installer;
+  that installer successfully installed the test payload under QEMU using only
+  Noble libraries. The legacy TIFF/WebP libraries were not required by the setup.
+- The real Linux installer GUI was inspected at 100% and 150% scaling. At 150%,
+  keyboard navigation, destination editing, license consent and installation
+  completed through the Finished page. No stylesheet/parser warnings occurred.
+- The source manifest and the extracted deliverable ZIP were verified.
+
+The packaging payload used locally was a small executable fixture, not a new
+native Editor application build. This repair does not change C++ application
+code. The sandbox could not switch to an unprivileged Linux UID, so the revised
+non-administrator installation path still needs its native GitHub runner check.
+Windows and macOS were not run locally. No remote workflow was triggered or
+reported green for these unpushed changes.
+
+## Upload only Editor
+
+Extract the ZIP into a new folder. Open PowerShell in the extracted
 `JSON-API-Forge-Editor-v0.5.1` directory and run:
 
 ```powershell
@@ -39,30 +80,17 @@ Extract this ZIP into a new folder. Open PowerShell in the extracted
 ```
 
 Type `YUKLE` after the source checks. Requires Git for Windows and Windows
-PowerShell. The script uses Git's existing GitHub authentication, uploads only
-`refs/heads/Editor`, keeps the current remote Editor commit as its parent and
-performs a normal push. It does not change your source folder, other branches,
-tags or releases. If someone updates Editor concurrently, the push is rejected
-instead of overwriting that update. Rerun after reviewing the remote change.
+PowerShell. The script uses your existing GitHub authentication and uploads only
+`refs/heads/Editor`. It retains the current remote Editor commit as its parent
+and uses a normal push. Concurrent remote changes cause a rejection instead of
+being overwritten. Other branches, tags and releases are not modified.
 
-For source verification without any GitHub operation:
+For source verification without a GitHub operation:
 
 ```powershell
 .\PUSH-EDITOR.bat --check
 ```
 
-Do not rerun the older four-branch uploader to publish this Editor-only repair.
-
-## Verification
-
-- Qt 6.8.3 Linux Release build with warnings treated as errors and native tests.
-- Installer layout/empty-stage/DMG-cleanup regression tests.
-- Real Qt IFW 4.8.1 Linux setup created; GUI opened at 760x540 on a 1366x768
-  display, with visible navigation. Next advances to destination selection.
-- Generated setup installed; the installed Editor launched and saved its screenshot.
-- Windows uploader PowerShell payload and local Git upload checks.
-- Source manifest and final ZIP byte verification.
-
-The remote workflow has not been rerun for these unpushed changes. Native Windows,
-macOS and ARM64 validation still runs in GitHub Actions after you upload this folder.
-The source ZIP contains build/packaging sources, not a prebuilt Windows installer.
+Use the included Editor uploader, not the old four-branch replacement script.
+This ZIP contains source code; the workflow generates the installers and
+portable application archives after upload.

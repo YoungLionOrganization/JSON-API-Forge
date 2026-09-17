@@ -9,6 +9,8 @@
     <InstallerWindowIcon>installer-window-icon.png</InstallerWindowIcon>
     <!-- No header pixmap: QWizard does not fit large logos to the page. -->
     <WizardStyle>Modern</WizardStyle>
+    <StyleSheet>installer.qss</StyleSheet>
+    <TitleColor>#f2b84b</TitleColor>
     <WizardDefaultWidth>760</WizardDefaultWidth>
     <WizardDefaultHeight>540</WizardDefaultHeight>
     <WizardMinimumWidth>680</WizardMinimumWidth>

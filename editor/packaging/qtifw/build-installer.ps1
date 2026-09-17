@@ -28,6 +28,7 @@ $dataRoot = Join-Path $workRoot "packages/dev.jsonapiforge.editor/data"
 try {
     New-Item -ItemType Directory -Force $configRoot, $metaRoot, $dataRoot | Out-Null
     Copy-Item (Join-Path $PSScriptRoot "config/config.xml") -Destination $configRoot
+    Copy-Item (Join-Path $PSScriptRoot "config/installer.qss") -Destination $configRoot
     Copy-Item (Join-Path $repositoryRoot "editor/resources/forge-editor.ico") -Destination $configRoot
     Copy-Item (Join-Path $repositoryRoot "editor/resources/brand-mark-transparent.png") `
         -Destination (Join-Path $configRoot "installer-window-icon.png")
