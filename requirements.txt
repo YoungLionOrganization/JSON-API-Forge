@@ -11,7 +11,7 @@ pydantic-settings>=2.14.2,<3.0
 python-dotenv>=1.1,<2.0
 jsonschema>=4.24,<5.0
 PyYAML>=6.0,<7.0
-filelock>=3.18,<4.0
+filelock>=3.18,<5.0
 
 # Async SQL and database drivers
 sqlalchemy[asyncio]>=2.0.51,<3.0
