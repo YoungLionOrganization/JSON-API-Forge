@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-version="0.5.3"
+version="0.5.2"
 destination=""
 repository="YoungLionOrganization/JSON-API-Forge"
 
@@ -23,7 +23,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     *)
-      printf '%s\n' "usage: $0 [--version 0.5.3] [--destination DIR] [--repository owner/name]" >&2
+      printf '%s\n' "usage: $0 [--version 0.5.2] [--destination DIR] [--repository owner/name]" >&2
       exit 2
       ;;
   esac

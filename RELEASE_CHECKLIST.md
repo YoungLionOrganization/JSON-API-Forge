@@ -1,9 +1,9 @@
-# Release Checklist — v0.5.3
+# Release Checklist — v0.5.2
 
 This checklist is for the Project Owner and authorized maintainers of the canonical repository.
 
 ## Version and source
-- [ ] `VERSION`, `pyproject.toml`, server Python/TypeScript metadata, `CITATION.cff`, `CHANGELOG.md`, `README.md` and `RELEASE.md` identify v0.5.3 where current-version metadata is intended.
+- [ ] `VERSION`, `pyproject.toml`, server Python/TypeScript metadata, `CITATION.cff`, `CHANGELOG.md`, `README.md` and `RELEASE.md` identify v0.5.2 where current-version metadata is intended.
 - [ ] `main` has an empty `app/`; a temporary `forge new` project validates successfully.
 - [ ] `forge doctor` reports no errors.
 - [ ] `forge doctor --production` is exercised with representative production secrets supplied outside Git.
@@ -36,7 +36,7 @@ This checklist is for the Project Owner and authorized maintainers of the canoni
 
 ## Publish
 - [ ] Review compatibility changes and the local latency report; do not treat local timings as a production hosting guarantee.
-- [ ] Merge the reviewed v0.5.3 server tree to `main`.
+- [ ] Merge the reviewed v0.5.2 server tree to `main`.
 - [ ] Wait for the latest successful main-push CI, CodeQL and platform-build attempts on that exact SHA.
 - [ ] Run publisher `validate`, then `draft`, and inspect the draft notes/assets.
 - [ ] Let the publisher create the lightweight tag for that SHA; do not pre-create an annotated tag.

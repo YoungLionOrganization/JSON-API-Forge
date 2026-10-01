@@ -1,12 +1,12 @@
-# JSON API Forge v0.5.3
+# JSON API Forge v0.5.2
 
 **Status: in development; publication is a separate manual action.** This release covers the canonical server distribution from `main`. Editor, Python SDK and example applications retain their independent branches, versions and release ownership.
 
 ## Release summary
 
-v0.5.3 fixes resource-cache isolation, heterogeneous batch inserts, ISO datetime coercion, nullable cursor pagination, PUT defaults, BIGINT declarations, media cleanup and malformed/non-finite input handling. It also improves actual endpoint cancellation, JWKS refresh/client reuse, DNS isolation, readiness concurrency and startup schema/client overhead.
+v0.5.2 fixes resource-cache isolation, heterogeneous batch inserts, ISO datetime coercion, nullable cursor pagination, PUT defaults, BIGINT declarations, media cleanup and malformed/non-finite input handling. It also improves actual endpoint cancellation, JWKS refresh/client reuse, DNS isolation, readiness concurrency and startup schema/client overhead.
 
-Server delivery uses a manual publisher with successful exact-commit workflow gates, artifact provenance, archive integrity checks, complete companion checksums, resumable draft uploads and remote digest verification. The public release body is maintained in [`release/notes/v0.5.3.md`](release/notes/v0.5.3.md).
+Server delivery uses a manual publisher with successful exact-commit workflow gates, artifact provenance, archive integrity checks, complete companion checksums, resumable draft uploads and remote digest verification. The public release body is maintained in [`release/notes/v0.5.2.md`](release/notes/v0.5.2.md).
 
 ## Compatibility and upgrade review
 
@@ -31,16 +31,16 @@ Latest local validation on Python 3.12:
 | Ruff lint/format | Passed |
 | Source manifest | Passed; regenerate and verify for the final commit after documentation changes |
 | Wheel/sdist, Twine, dependency consistency | Passed |
-| TypeScript reference client | Type checking and 3 tests passed during v0.5.3 preparation |
+| TypeScript reference client | Type checking and 3 tests passed during v0.5.2 preparation |
 
-Controlled latency probes used 10 local cold starts and 300 warm requests. The 10-project Passenger first-request median changed from 143 ms to 36 ms; warm medians remained around 1.2 ms. These compare the initial v0.5.3 development implementation with the local latency patch, not a deployed v0.5.1-to-v0.5.3 production upgrade. They exclude hosting worker creation, real DNS/TLS and remote DB latency. See the [analysis and reproduction commands](docs/performance/v0.5.3-latency-analysis.md).
+Controlled latency probes used 10 local cold starts and 300 warm requests. The 10-project Passenger first-request median changed from 143 ms to 36 ms; warm medians remained around 1.2 ms. These compare the initial v0.5.2 development implementation with the local latency patch, not a deployed v0.5.1-to-v0.5.2 production upgrade. They exclude hosting worker creation, real DNS/TLS and remote DB latency. See the [analysis and reproduction commands](docs/performance/v0.5.2-latency-analysis.md).
 
 GitHub's Python matrix, live PostgreSQL/Redis/MongoDB, container, CodeQL and standalone platform checks must still succeed. The publisher itself has local tests; actual draft creation, remote uploads and public publication require their own Actions execution. A green PR run is review evidence, not the required `main` push run after merge.
 
 ## Prepare the reviewed main commit
 
 1. Review and merge the server PR into `main`.
-2. Check that `VERSION`, `pyproject.toml`, TypeScript reference-client metadata, release metadata and expected asset filenames agree on 0.5.3. Regenerate `MANIFEST.sha256` whenever tracked source or documentation changes.
+2. Check that `VERSION`, `pyproject.toml`, TypeScript reference-client metadata, release metadata and expected asset filenames agree on 0.5.2. Regenerate `MANIFEST.sha256` whenever tracked source or documentation changes.
 3. Wait for these workflows on the **same full main commit SHA**, using their latest successful run/attempt:
 
    | Metadata entry | Required workflow |
@@ -63,9 +63,9 @@ Open **Actions → Validate, draft or publish server release → Run workflow** 
 | `draft` | Revalidate, create the lightweight version tag pointing to the selected source commit if absent, then create/resume the private draft and upload verified assets by numeric release ID. |
 | `publish` | Revalidate the build, complete the draft if needed, verify remote asset names/digests and recheck workflow attempts, tag identity and draft status before making the release public. Review the draft first. |
 
-The workflow grants write permission only to the release job and serializes publication without cancelling an active upload. Existing public releases are refused. Existing tags must be lightweight commit refs pointing exactly to the selected SHA; do not create an annotated v0.5.3 tag for this flow.
+The workflow grants write permission only to the release job and serializes publication without cancelling an active upload. Existing public releases are refused. Existing tags must be lightweight commit refs pointing exactly to the selected SHA; do not create an annotated v0.5.2 tag for this flow.
 
-Inspect [`release/notes/v0.5.3.md`](release/notes/v0.5.3.md), archive names and platform coverage before choosing `publish`. A server draft must contain exactly its verified server asset set. Drafts with Editor/SDK or unexpected assets are refused; other component assets are never overwritten or deleted. A combined component release requires a separate component manifest and publication design.
+Inspect [`release/notes/v0.5.2.md`](release/notes/v0.5.2.md), archive names and platform coverage before choosing `publish`. A server draft must contain exactly its verified server asset set. Drafts with Editor/SDK or unexpected assets are refused; other component assets are never overwritten or deleted. A combined component release requires a separate component manifest and publication design.
 
 ## Retry and recovery
 
