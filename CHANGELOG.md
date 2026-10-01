@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.3 (in development)
+
+Cache policy isolation, atomic heterogeneous batches, ISO datetimes and nullable cursors, media cleanup and signed-token validation, non-finite parameter rejection, portable BIGINT declarations, bounded DNS/JWKS/readiness waits, app-scoped JWKS clients, reflected-table reuse and stage latency metrics. Manual server validate/draft/publish workflow verifies exact commit/run-attempt provenance, latest CI/CodeQL/platform gates, complete checksums and remote digests. Latency follow-up cancels the actual ASGI endpoint before reusing admission slots, isolates timed-out DNS work from file/hook executors, lazily creates HTTP clients, limits auto-create checks to the current table and adds optional HTTP source total deadlines. See `release/notes/v0.5.3.md` for compatibility details and `docs/performance/v0.5.3-latency-analysis.md` for measured results and remaining limits.
+
+
 ## [0.5.1] — 2026-09-06
 
 ### Security and correctness

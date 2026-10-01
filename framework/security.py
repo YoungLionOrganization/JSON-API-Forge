@@ -25,6 +25,7 @@ _internal_meta = MetaData()
 _JWKSCacheKey = tuple[str, bool, bool, int]
 _jwks_cache: dict[_JWKSCacheKey, tuple[float, dict[str, Any]]] = {}
 _jwks_locks: dict[_JWKSCacheKey, asyncio.Lock] = {}
+_jwks_refreshed: dict[_JWKSCacheKey, float] = {}
 
 
 def _claim(payload: dict[str, Any], dotted: str, default: Any = None) -> Any:
@@ -56,7 +57,14 @@ def _jwks_cache_key(
     return (url, allow_private_networks, allow_insecure_http, max_response_bytes)
 
 
-async def _get_jwks(
+async def _get_jwks(url: str, *, ttl: int, timeout: float, **kwargs) -> dict[str, Any]:
+    try:
+        return await asyncio.wait_for(_fetch_jwks(url, ttl=ttl, timeout=timeout, **kwargs), timeout)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=503, detail="JWT signing keys are temporarily unavailable") from exc
+
+
+async def _fetch_jwks(
     url: str,
     *,
     ttl: int,
@@ -64,6 +72,9 @@ async def _get_jwks(
     allow_private_networks: bool = False,
     allow_insecure_http: bool = False,
     max_response_bytes: int = 1024 * 1024,
+    force_refresh: bool = False,
+    refresh_interval: float = 5.0,
+    client_pool: dict | None = None,
 ) -> dict[str, Any]:
     normalized_url = url.lower()
     if not normalized_url.startswith("https://") and not (allow_insecure_http and normalized_url.startswith("http://")):
@@ -76,29 +87,41 @@ async def _get_jwks(
     )
     now = time.monotonic()
     cached = _jwks_cache.get(cache_key)
-    if cached and cached[0] > now:
+    if cached and cached[0] > now and (not force_refresh or now - _jwks_refreshed.get(cache_key, 0) < refresh_interval):
         return cached[1]
     lock = _jwks_locks.setdefault(cache_key, asyncio.Lock())
     async with lock:
         cached = _jwks_cache.get(cache_key)
         now = time.monotonic()
-        if cached and cached[0] > now:
+        if cached and cached[0] > now and (not force_refresh or now - _jwks_refreshed.get(cache_key, 0) < refresh_interval):
             return cached[1]
+        last_attempt = _jwks_refreshed.get(cache_key)
+        if last_attempt is not None and now - last_attempt < refresh_interval:
+            # Never serve expired keys, but also do not hammer a failing provider.
+            raise HTTPException(status_code=503, detail="JWT signing keys are temporarily unavailable")
         client: ResilientHTTPClient | None = None
+        # Bound refresh attempts even if the upstream is currently failing.
+        _jwks_refreshed[cache_key] = now
         try:
-            client = ResilientHTTPClient(timeout=timeout, block_private_networks=not allow_private_networks)
+            client = client_pool.get(cache_key) if client_pool is not None else None
+            if client is None:
+                client = ResilientHTTPClient(timeout=timeout, block_private_networks=not allow_private_networks)
+                if client_pool is not None:
+                    client_pool[cache_key] = client
             response = await client.request(
                 "GET",
                 url,
                 headers={"Accept": "application/json"},
                 retries=1,
                 max_response_bytes=max_response_bytes,
+                timeout=timeout,
+                total_timeout=timeout,
             )
             data = response.json()
         except (httpx.HTTPError, ResponseTooLarge, RuntimeError, ValueError) as exc:
             raise HTTPException(status_code=503, detail="JWT signing keys are temporarily unavailable") from exc
         finally:
-            if client is not None:
+            if client is not None and client_pool is None:
                 await client.close()
         if (
             not isinstance(data, dict)
@@ -107,11 +130,12 @@ async def _get_jwks(
             or any(not isinstance(key, dict) for key in data["keys"])
         ):
             raise HTTPException(status_code=503, detail="JWT signing key endpoint returned invalid JWKS")
-        _jwks_cache[cache_key] = (now + ttl, data)
+        _jwks_refreshed[cache_key] = time.monotonic()
+        _jwks_cache[cache_key] = (_jwks_refreshed[cache_key] + ttl, data)
         return data
 
 
-async def _decode_jwks_token(token: str, project: ProjectConfig) -> dict[str, Any]:
+async def _decode_jwks_token(token: str, project: ProjectConfig, *, client_pool: dict | None = None) -> dict[str, Any]:
     cfg = project.security
     try:
         header = jwt.get_unverified_header(token)
@@ -119,7 +143,7 @@ async def _decode_jwks_token(token: str, project: ProjectConfig) -> dict[str, An
         raise HTTPException(status_code=401, detail="Invalid bearer token header") from exc
     kid = header.get("kid")
     alg = header.get("alg")
-    if not kid or not alg or alg not in cfg.jwt_algorithms:
+    if not isinstance(kid, str) or not 1 <= len(kid) <= 256 or not isinstance(alg, str) or alg not in cfg.jwt_algorithms:
         raise HTTPException(status_code=401, detail="Bearer token uses an unsupported signing key or algorithm")
     jwks_args = {
         "ttl": cfg.jwks_cache_ttl_seconds,
@@ -127,20 +151,14 @@ async def _decode_jwks_token(token: str, project: ProjectConfig) -> dict[str, An
         "allow_private_networks": cfg.jwks_allow_private_networks,
         "allow_insecure_http": cfg.jwks_allow_insecure_http,
         "max_response_bytes": cfg.jwks_max_response_bytes,
+        "refresh_interval": cfg.jwks_refresh_interval_seconds,
     }
+    if client_pool is not None:
+        jwks_args["client_pool"] = client_pool
     jwks = await _get_jwks(cfg.jwt_jwks_url or "", **jwks_args)
     key_data = next((key for key in jwks["keys"] if key.get("kid") == kid), None)
     if key_data is None:
-        _jwks_cache.pop(
-            _jwks_cache_key(
-                cfg.jwt_jwks_url or "",
-                allow_private_networks=cfg.jwks_allow_private_networks,
-                allow_insecure_http=cfg.jwks_allow_insecure_http,
-                max_response_bytes=cfg.jwks_max_response_bytes,
-            ),
-            None,
-        )
-        jwks = await _get_jwks(cfg.jwt_jwks_url or "", **jwks_args)
+        jwks = await _get_jwks(cfg.jwt_jwks_url or "", force_refresh=True, **jwks_args)
         key_data = next((key for key in jwks["keys"] if key.get("kid") == kid), None)
     if key_data is None:
         raise HTTPException(status_code=401, detail="Unknown JWT signing key")
@@ -425,7 +443,8 @@ async def authenticate_request(request: Request, project: ProjectConfig, engine:
             raise HTTPException(status_code=401, detail="Invalid bearer token")
         cfg = project.security
         if cfg.jwt_provider == "jwks":
-            payload = await _decode_jwks_token(token, project)
+            pool = getattr(request.scope.get("app", None).state, "jwks_clients", None) if request.scope.get("app") is not None else None
+            payload = await _decode_jwks_token(token, project, client_pool=pool)
         else:
             try:
                 secret = cfg.jwt_secret or settings.jwt_secret

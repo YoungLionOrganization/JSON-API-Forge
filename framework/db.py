@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, MetaData, String, Table, Text
+from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, Float, Integer, MetaData, String, Table, Text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from .config import ColumnConfig, ProjectConfig, ResourceConfig
+from .observability import measure_stage
 from .operations import init_operation_idempotency
 
 log = logging.getLogger("json_api_forge.db")
@@ -33,7 +35,9 @@ class DatabaseRegistry:
 
 def _column_type(spec: ColumnConfig):
     t = spec.type.lower()
-    if t in {"int", "integer", "bigint"}:
+    if t == "bigint":
+        return BigInteger().with_variant(Integer(), "sqlite")
+    if t in {"int", "integer"}:
         return Integer
     if t in {"float", "number", "double"}:
         return Float
@@ -150,10 +154,16 @@ async def build_registry(project: ProjectConfig) -> DatabaseRegistry:
             db_cfg = project.databases[resource.database]
             if resource.auto_create and db_cfg.support_schema_mode == "create":
                 table = build_declared_table(metadata, resource)
-                async with engine.begin() as conn:
-                    await conn.run_sync(metadata.create_all)
+                with measure_stage(project.slug, "sql_schema_setup"):
+                    async with engine.begin() as conn:
+                        # Checking all accumulated tables for each resource causes
+                        # quadratic startup round trips to a remote database.
+                        await conn.run_sync(partial(metadata.create_all, tables=[table]))
+            elif (resource.database, resource.table) in tables:
+                table = tables[(resource.database, resource.table)]
             else:
-                table = await _reflect_table(engine, metadata, resource.table)
+                with measure_stage(project.slug, "sql_reflection"):
+                    table = await _reflect_table(engine, metadata, resource.table)
             validate_resource_contract(resource, table)
             tables[(resource.database, resource.table)] = table
         return DatabaseRegistry(engines=engines, metadata=metadata_map, tables=tables)

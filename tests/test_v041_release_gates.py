@@ -534,7 +534,8 @@ def test_crud_edge_branches():
     assert c._coerce_for_column(table.c.optional, None) is None
     assert c._coerce_for_column(table.c.active, "1") is True
     assert c._coerce_for_column(table.c.active, "0") is False
-    assert c._coerce_for_column(table.c.active, "maybe") is True
+    with pytest.raises(HTTPException):
+        c._coerce_for_column(table.c.active, "maybe")
     for op, val in [("in", "1,2"), ("isnull", "false"), ("ne", "1"), ("like", "x%"), ("ilike", "x%")]:
         assert c._filter_clause(table.c.name if "like" in op else table.c.id, op, val) is not None
     with pytest.raises(HTTPException):

@@ -1,8 +1,9 @@
-# JSON API Forge v0.5.1
+# JSON API Forge v0.5.3
 
 [![CI](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/ci.yml?query=branch%3Amain)
 [![CodeQL](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/codeql.yml?query=branch%3Amain)
-[![Version 0.5.1](https://img.shields.io/badge/version-0.5.1-D4A017)](VERSION)
+[![Platform builds](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/server-builds.yml/badge.svg?branch=main)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/server-builds.yml?query=branch%3Amain)
+[![Version 0.5.3](https://img.shields.io/badge/version-0.5.3-D4A017)](VERSION)
 [![Python 3.10–3.14](https://img.shields.io/badge/Python-3.10%E2%80%933.14-3776AB?logo=python&logoColor=white)](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/main/pyproject.toml)
 [![Source available](https://img.shields.io/badge/license-source--available-555555)](LICENSE)
 
@@ -12,7 +13,7 @@
 
 JSON API Forge turns strict, numbered JSON configuration into a real asynchronous backend: CRUD resources, transactional SQL/RPC operations, MongoDB resources, cache, rate limiting, media, data sources, realtime channels, authentication, OpenAPI and operational endpoints. Python hooks remain the explicit escape hatch for business logic that should not be forced into configuration.
 
-> **v0.5.1 is the security and delivery hardening release.** It closes the external-JWKS SSRF/DNS-rebinding boundary, moves configured pattern validation to a bounded linear-time engine, strengthens URL/header/ICE/client input policy and carries the v0.5.0 visual-authoring ecosystem forward. The project remains **Alpha**.
+> **v0.5.3 is in development and the project remains Alpha.** This server update fixes cache/data correctness, reduces startup overhead, improves request cancellation and introduces a verified manual publisher. See [release notes](release/notes/v0.5.3.md) and the [release procedure](RELEASE.md).
 
 ## Why JSON API Forge exists
 
@@ -39,7 +40,20 @@ app/MyService/
 
 Fragments are merged alphabetically and then validated by strict Pydantic models. Unknown configuration keys are rejected.
 
-## v0.5.1 ecosystem
+## v0.5.3 server changes
+
+- **Security and data correctness:** SQL/Mongo resource caches isolate visibility and access policies while retaining shared invalidation. Heterogeneous SQL batches preserve fields and defaults atomically; ISO datetime writes/filters, nullable cursors, replacement defaults, BIGINT mapping and media cleanup have regression coverage.
+- **Bounded waits:** request timeouts cancel the actual async endpoint before its admission slot is reused. DNS uses a separate executor; JWKS clients are reused, refresh attempts are coalesced and provider outages are throttled. Readiness probes have time and concurrency limits.
+- **Startup and diagnosis:** HTTP clients are created only when needed, reflected tables are reused and schema creation checks only the current table. Protected stage histograms distinguish authentication, queue wait, schema setup and reflection/startup work.
+- **Release delivery:** a manual `validate` → `draft` → `publish` workflow reuses successful platform artifacts and checks exact-SHA CI/CodeQL/build results, provenance, archive integrity, companion checksums and uploaded digests. Interrupted draft uploads can resume.
+
+Existing configuration remains accepted. HTTP sources can opt into `total_timeout_seconds` to include retries and streamed reads in one budget; its default is `null`, preserving the existing per-phase `timeout_seconds` behavior. Async timeouts require cooperative cancellation: already-running synchronous hooks, blocking DNS calls and some database operations may continue until their driver/thread returns. Streaming lifetime after response headers is unchanged.
+
+Controlled local measurements against the initial v0.5.3 development commit used **10 cold starts and 300 warm requests**. A 10-project Passenger first-request median fell from **143 ms to 36 ms**; warm medians stayed around **1.2 ms**. These measurements exclude hosting process creation and remote DB/network latency and do not establish that YoungLion's reported hosting delay is resolved. See the [full latency analysis, raw results and reproduction commands](docs/performance/v0.5.3-latency-analysis.md).
+
+## v0.5.1 ecosystem baseline
+
+The following describes the existing component baseline. This v0.5.3 server update does not update or release the independent Editor, SDK or example branches.
 
 - `main` stays example-free and now validates bounded, schema-versioned, acyclic Editor graph documents behind the separate `EDITOR_ALLOW_GRAPHS` policy.
 - The control plane uses one-time founder setup, hashed worker credentials, expiring sessions, ranked/scoped roles, project/document/database policy and append-only audit records; the shared-token mode is development-only compatibility.
@@ -153,11 +167,21 @@ The official CI targets:
 - package build and Docker image build;
 - CodeQL;
 - tracked-source `MANIFEST.sha256` verification;
-- a tag-only release gate that depends on the required jobs.
+- standalone platform builds and artifact/checksum validation;
+- an exact-commit manual publisher that requires successful latest `main` push runs of CI, CodeQL and platform builds. The existing tag-only CI gate is supplementary.
 
 The `python-library`, `Editor` and `exampleApps` branches have branch-specific build workflows. They produce downloadable artifacts but do not publish packages or releases automatically.
 
-A local green run is useful, but an official release should not be tagged while the canonical GitHub-hosted CI is red.
+Latest local v0.5.3 validation on Python 3.12: **166 tests passed, 7 external-service tests skipped, 81.35% branch-aware coverage**, with critical module floors passing. Lint/format, manifest and wheel/sdist checks passed. Local results do not replace the GitHub Python matrix, live-service integration, container, CodeQL or platform build results.
+
+```bash
+pytest -q --cov=framework --cov-report=json
+python scripts/check_critical_coverage.py
+python scripts/check_manifest.py
+python scripts/benchmark_latency.py --repeats 10
+```
+
+For an official server release, merge the reviewed source and follow [`RELEASE.md`](RELEASE.md). The publisher creates the lightweight tag from the verified commit; manually creating an annotated tag is not this publisher's release path.
 
 ## Documentation
 
@@ -178,7 +202,8 @@ Forge v0.5.x is Alpha. In particular:
 - local media is not horizontally shared object storage;
 - declarative SQL is trusted configuration, not an attacker-safe SQL sandbox;
 - memory backends are process-local;
-- schema auto-creation is not a complete production migration framework.
+- schema auto-creation is not a complete production migration framework;
+- request deadlines cannot forcibly terminate blocking driver/thread work or remove hosting cold-start delays.
 
 See [known limitations](KNOWN_LIMITATIONS.md) and [non-goals](docs/41-Known-Limits-and-Non-Goals.md).
 

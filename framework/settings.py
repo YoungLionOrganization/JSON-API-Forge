@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     bootstrap_admin_key: str = ""
     jwt_secret: str = ""
     operator_token: str = ""
+    readiness_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
+    readiness_max_concurrency: int = Field(default=8, ge=1, le=64)
 
     # The remote editor control plane is deliberately disabled by default. It
     # has an independent credential and network policy from application API

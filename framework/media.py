@@ -148,35 +148,38 @@ async def save_media(*, engine, store: LocalMediaStore, project_slug: str, confi
     media_id = secrets.token_hex(16)
     storage_key = f"{project_slug}/{datetime.now(timezone.utc):%Y/%m}/{media_id}-{safe}"
     size, digest = await store.save_upload(upload, storage_key, config.max_upload_bytes)
-    if config.deduplicate:
-        filt = (media_table.c.project_slug == project_slug) & (media_table.c.sha256 == digest)
-        if config.deduplicate_scope == "owner":
-            filt = filt & (media_table.c.owner_subject == owner_subject[:160])
-        async with engine.connect() as conn:
-            existing = (await conn.execute(select(media_table).where(filt))).mappings().first()
-        if existing:
-            store.delete(storage_key)
-            return dict(existing)
-    values = {
-        "id": media_id,
-        "project_slug": project_slug,
-        "storage_key": storage_key,
-        "original_name": safe,
-        "content_type": content_type,
-        "size": size,
-        "sha256": digest,
-        "owner_subject": owner_subject[:160],
-        "created_at": datetime.now(timezone.utc),
-    }
-    if config.max_owner_bytes:
-        await _ensure_usage_row(engine, project_slug, owner_subject)
     try:
+        if config.deduplicate:
+            filt = (media_table.c.project_slug == project_slug) & (media_table.c.sha256 == digest)
+            if config.deduplicate_scope == "owner":
+                filt = filt & (media_table.c.owner_subject == owner_subject[:160])
+            async with engine.connect() as conn:
+                existing = (await conn.execute(select(media_table).where(filt))).mappings().first()
+            if existing:
+                store.delete(storage_key)
+                return dict(existing)
+        values = {
+            "id": media_id,
+            "project_slug": project_slug,
+            "storage_key": storage_key,
+            "original_name": safe,
+            "content_type": content_type,
+            "size": size,
+            "sha256": digest,
+            "owner_subject": owner_subject[:160],
+            "created_at": datetime.now(timezone.utc),
+        }
+        if config.max_owner_bytes:
+            await _ensure_usage_row(engine, project_slug, owner_subject)
         async with engine.begin() as conn:
             if config.max_owner_bytes:
                 await _reserve_usage(conn, project_slug, owner_subject, size, config.max_owner_bytes)
             await conn.execute(insert(media_table).values(**values))
-    except Exception:
-        store.delete(storage_key)
+    except BaseException:
+        try:
+            store.delete(storage_key)
+        except Exception:
+            log.exception("Failed to clean an uncommitted media object media_id=%s", media_id)
         raise
     return values
 
@@ -234,7 +237,7 @@ def make_signed_media_token(project_slug: str, media_id: str, ttl_seconds: int, 
 
 
 def verify_signed_media_token(project_slug: str, media_id: str, token: str | None, *, secret: str) -> bool:
-    if not token or not secret:
+    if not token or not secret or len(token) > 128 or not token.isascii():
         return False
     try:
         exp_raw, supplied = token.split(".", 1)

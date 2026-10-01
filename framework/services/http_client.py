@@ -4,13 +4,22 @@ import asyncio
 import ipaddress
 import socket
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import lru_cache
 
 import httpcore
 import httpx
 
 _RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
 _IDEMPOTENT_METHODS = {"GET", "HEAD", "OPTIONS", "PUT", "DELETE"}
+
+
+@lru_cache(maxsize=1)
+def _dns_executor():
+    # Threads start only on the first DNS request, after Passenger worker start.
+    # A timed-out libc lookup cannot be stopped; isolate it from file/hook work.
+    return ThreadPoolExecutor(max_workers=8, thread_name_prefix="forge-dns")
 
 
 @dataclass
@@ -51,8 +60,19 @@ class _AddressPolicyBackend(httpcore.AsyncNetworkBackend):
         local_address: str | None = None,
         socket_options=None,
     ) -> httpcore.AsyncNetworkStream:
+        if timeout is None:
+            return await self._connect_validated(host, port, None, local_address, socket_options)
         try:
-            infos = await asyncio.to_thread(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
+            return await asyncio.wait_for(
+                self._connect_validated(host, port, time.monotonic() + timeout, local_address, socket_options), timeout
+            )
+        except asyncio.TimeoutError as exc:
+            raise httpcore.ConnectTimeout("Outbound DNS/connection deadline exceeded") from exc
+
+    async def _connect_validated(self, host, port, deadline, local_address, socket_options):
+        try:
+            loop = asyncio.get_running_loop()
+            infos = await loop.run_in_executor(_dns_executor(), lambda: socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))
         except OSError as exc:
             raise httpcore.ConnectError(f"Cannot resolve outbound host {host!r}") from exc
         addresses: list[str] = []
@@ -70,7 +90,7 @@ class _AddressPolicyBackend(httpcore.AsyncNetworkBackend):
                 return await self._backend.connect_tcp(
                     address,
                     port,
-                    timeout=timeout,
+                    timeout=None if deadline is None else max(0.0, deadline - time.monotonic()),
                     local_address=local_address,
                     socket_options=socket_options,
                 )
@@ -149,9 +169,14 @@ class ResilientHTTPClient:
                 if max_response_bytes is not None and total > max_response_bytes:
                     raise ResponseTooLarge(f"Upstream response exceeds max_response_bytes={max_response_bytes}")
                 chunks.append(chunk)
+            headers = [
+                (name, value)
+                for name, value in response.headers.multi_items()
+                if name.lower() not in {"content-encoding", "content-length"}
+            ]
             return httpx.Response(
                 status_code=response.status_code,
-                headers=response.headers,
+                headers=headers,
                 content=b"".join(chunks),
                 request=request,
                 extensions=response.extensions,
@@ -167,8 +192,24 @@ class ResilientHTTPClient:
         retries: int = 2,
         retry_non_idempotent: bool = False,
         max_response_bytes: int | None = None,
+        total_timeout: float | None = None,
         **kwargs,
     ) -> httpx.Response:
+        if total_timeout is not None:
+            try:
+                return await asyncio.wait_for(
+                    self.request(
+                        method,
+                        url,
+                        retries=retries,
+                        retry_non_idempotent=retry_non_idempotent,
+                        max_response_bytes=max_response_bytes,
+                        **kwargs,
+                    ),
+                    total_timeout,
+                )
+            except asyncio.TimeoutError as exc:
+                raise httpx.TimeoutException("Outbound request deadline exceeded", request=httpx.Request(method, url)) from exc
         method = method.upper()
         host = httpx.URL(url).host or "unknown"
         state = self.states.setdefault(host, CircuitState())

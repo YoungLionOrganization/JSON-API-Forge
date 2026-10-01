@@ -26,8 +26,28 @@ class DataSourceManager:
         self.project = project
         self.root = Path(project.project_dir).resolve()
         self._locks: dict[str, asyncio.Lock] = {}
-        self.http = ResilientHTTPClient()
-        self.private_http = ResilientHTTPClient(block_private_networks=False)
+        self._http = None
+        self._private_http = None
+
+    @property
+    def http(self):
+        if self._http is None:
+            self._http = ResilientHTTPClient()
+        return self._http
+
+    @http.setter
+    def http(self, value):
+        self._http = value
+
+    @property
+    def private_http(self):
+        if self._private_http is None:
+            self._private_http = ResilientHTTPClient(block_private_networks=False)
+        return self._private_http
+
+    @private_http.setter
+    def private_http(self, value):
+        self._private_http = value
 
     def _lock(self, name: str) -> asyncio.Lock:
         return self._locks.setdefault(name, asyncio.Lock())
@@ -95,7 +115,7 @@ class DataSourceManager:
     def _blocked_address(address: str) -> bool:
         return blocked_network_address(address)
 
-    async def _validate_http_target(self, source: DataSourceConfig) -> None:
+    async def _validate_http_target(self, source: DataSourceConfig, *, resolve: bool = True) -> None:
         parsed = urlsplit(source.url or "")
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise HTTPException(status_code=502, detail="HTTP data source URL is invalid")
@@ -103,7 +123,7 @@ class DataSourceManager:
             raise HTTPException(status_code=502, detail="HTTP data source URLs may not embed credentials")
         if parsed.scheme == "http" and not source.allow_insecure_http:
             raise HTTPException(status_code=502, detail="Plain HTTP egress is disabled for this data source")
-        if source.allow_private_networks:
+        if source.allow_private_networks or not resolve:
             return
         host = parsed.hostname
         try:
@@ -128,7 +148,9 @@ class DataSourceManager:
         elif source.type in {"json_file", "yaml_file", "csv_file"}:
             data = await asyncio.to_thread(self._read_file_sync, source)
         elif source.type == "http":
-            await self._validate_http_target(source)
+            # The transport validates and dials the same DNS answers. A second
+            # preflight resolution adds latency without strengthening that boundary.
+            await self._validate_http_target(source, resolve=False)
             kwargs: dict[str, Any] = {
                 "headers": source.headers,
                 "retries": source.retries,
@@ -136,6 +158,8 @@ class DataSourceManager:
                 "retry_non_idempotent": source.retry_non_idempotent,
                 "max_response_bytes": source.max_response_bytes,
             }
+            if source.total_timeout_seconds is not None:
+                kwargs["total_timeout"] = source.total_timeout_seconds
             if source.forward_query:
                 kwargs["params"] = list(request.query_params.multi_items())
             if source.forward_body and payload is not None:
@@ -253,5 +277,6 @@ class DataSourceManager:
             return await asyncio.to_thread(self._mutate_file_sync, source, "delete", item_id=item_id)
 
     async def close(self) -> None:
-        await self.http.close()
-        await self.private_http.close()
+        for client in (self._http, self._private_http):
+            if client is not None:
+                await client.close()

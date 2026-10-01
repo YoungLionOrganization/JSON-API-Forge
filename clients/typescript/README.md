@@ -1,6 +1,6 @@
 # JSON API Forge TypeScript reference client
 
-[![Version 0.5.1](https://img.shields.io/badge/version-0.5.1-D4A017)](../../VERSION)
+[![Version 0.5.3](https://img.shields.io/badge/version-0.5.3-D4A017)](../../VERSION)
 [![Server CI](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/ci.yml?query=branch%3Amain)
 [![Source available](https://img.shields.io/badge/license-source--available-555555)](../../LICENSE)
 

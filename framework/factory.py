@@ -13,7 +13,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from .audit import AuditWriter
@@ -22,8 +21,9 @@ from .doctor import ensure_no_errors, project_diagnostics
 from .domain import expand_feature_packs
 from .editor_api import EDITOR_PREFIX, register_editor_api
 from .editor_identity import init_editor_identity
-from .observability import metrics_payload, observe
-from .protection import RequestBodyLimitMiddleware, client_ip, host_allowed, ip_allowed, request_is_https
+from .observability import measure_stage, metrics_payload, observe, observe_stage
+from .protection import RequestBodyLimitMiddleware, RequestExecutionTimeoutMiddleware, client_ip, host_allowed, ip_allowed, request_is_https
+from .readiness import check_runtime
 from .routers import register_project_routes
 from .runtime import ProjectRuntime, RuntimeManager
 from .security import authenticate_request, has_permission, init_security
@@ -197,17 +197,22 @@ def create_app(*, apps_dir: Path | str | None = None, _configuration=None, _reus
     async def lifespan(app: FastAPI):
         app.state.internal_engine = None
         app.state.audit_writer = None
+        app.state.jwks_clients = {}
         try:
             app.state.internal_engine = create_async_engine(internal_url, **_internal_engine_kwargs(internal_url))
-            await init_security(app.state.internal_engine, mode=settings.internal_schema_mode)
+            with measure_stage("global", "internal_schema_startup"):
+                await init_security(app.state.internal_engine, mode=settings.internal_schema_mode)
             if settings.editor_api_enabled:
-                await init_editor_identity(app.state.internal_engine, mode=settings.internal_schema_mode)
+                with measure_stage("global", "editor_schema_startup"):
+                    await init_editor_identity(app.state.internal_engine, mode=settings.internal_schema_mode)
             app.state.audit_writer = AuditWriter(app.state.internal_engine)
             await app.state.audit_writer.start()
             await runtime_manager.start()
             app.state.runtimes = runtimes
             yield
         finally:
+            await asyncio.gather(*(client.close() for client in app.state.jwks_clients.values()), return_exceptions=True)
+            app.state.jwks_clients.clear()
             try:
                 await runtime_manager.close()
             except Exception:
@@ -244,6 +249,12 @@ def create_app(*, apps_dir: Path | str | None = None, _configuration=None, _reus
         return runtime_manager.body_limit_for_path(path)
 
     app.add_middleware(RequestBodyLimitMiddleware, limit_for_path=body_limit_for_path)
+
+    def timeout_for_path(path: str) -> float | None:
+        runtime = runtime_manager.for_path(path)
+        return runtime.config.protection.request_timeout_seconds if runtime else None
+
+    app.add_middleware(RequestExecutionTimeoutMiddleware, timeout_for_path=timeout_for_path)
 
     def runtime_for_path(path: str) -> ProjectRuntime | None:
         return runtime_manager.for_path(path)
@@ -320,11 +331,10 @@ def create_app(*, apps_dir: Path | str | None = None, _configuration=None, _reus
                         cfg.rate_limit.pre_auth_burst,
                     )
 
+                gate_started = time.perf_counter()
                 async with runtime.gate:
-                    try:
-                        response = await asyncio.wait_for(call_next(request), timeout=cfg.protection.request_timeout_seconds)
-                    except asyncio.TimeoutError as exc:
-                        raise HTTPException(status_code=504, detail="Request timed out") from exc
+                    observe_stage(cfg.slug, "queue_wait", time.perf_counter() - gate_started)
+                    response = await call_next(request)
             else:
                 response = await call_next(request)
             status_code = response.status_code
@@ -369,7 +379,8 @@ def create_app(*, apps_dir: Path | str | None = None, _configuration=None, _reus
 
     async def principal_for(request: Request, runtime: ProjectRuntime):
         cfg = runtime.config
-        principal = await authenticate_request(request, cfg, app.state.internal_engine)
+        with measure_stage(cfg.slug, "authentication"):
+            principal = await authenticate_request(request, cfg, app.state.internal_engine)
         request.state.principal = principal
         if cfg.rate_limit.enabled:
             trusted_proxies = cfg.protection.trusted_proxy_cidrs
@@ -404,46 +415,23 @@ def create_app(*, apps_dir: Path | str | None = None, _configuration=None, _reus
     async def health():
         return {"status": "ok"}
 
+    readiness_slots = asyncio.Semaphore(settings.readiness_max_concurrency)
+
     @_hidden_route(app.get("/ready", tags=["system"], include_in_schema=False))
     async def ready(request: Request):
         detailed = _operator_authorized(request)
         checks = {}
         all_ok = bool(runtimes) and not config_issues
-        for slug, runtime in runtimes.items():
-            project_ok, databases, mongo = runtime.available, {}, {}
-            if runtime.registry:
-                for alias, engine in runtime.registry.engines.items():
-                    try:
-                        async with engine.connect() as conn:
-                            await conn.execute(text("SELECT 1"))
-                        databases[alias] = "ok"
-                    except Exception as exc:
-                        databases[alias] = f"error:{type(exc).__name__}" if detailed else "error"
-                        project_ok = False
-            if runtime.mongo_registry:
-                for alias, client in runtime.mongo_registry.clients.items():
-                    try:
-                        await client.admin.command("ping")
-                        mongo[alias] = "ok"
-                    except Exception as exc:
-                        mongo[alias] = f"error:{type(exc).__name__}" if detailed else "error"
-                        project_ok = False
-            shared = {}
-            for name, service in (("cache", runtime.cache), ("rate_limit", runtime.limiter), ("realtime", runtime.event_hub)):
-                if service is None:
-                    continue
-                try:
-                    shared[name] = "ok" if await service.ping() else "error"
-                    if shared[name] != "ok":
-                        project_ok = False
-                except Exception as exc:
-                    shared[name] = f"error:{type(exc).__name__}" if detailed else "error"
-                    project_ok = False
+        results = await asyncio.gather(
+            *(
+                check_runtime(runtime, detailed=detailed, semaphore=readiness_slots, timeout=settings.readiness_timeout_seconds)
+                for runtime in runtimes.values()
+            )
+        )
+        for slug, (project_ok, result) in zip(runtimes, results, strict=True):
             all_ok = all_ok and project_ok
             if detailed:
-                checks[slug] = {"status": "ok" if project_ok else "degraded", "databases": databases, "mongo": mongo, "services": shared}
-                if runtime.error_type:
-                    checks[slug]["error_type"] = runtime.error_type
+                checks[slug] = result
         payload = {"status": "ready" if all_ok else "degraded"}
         if detailed:
             payload["projects"] = checks

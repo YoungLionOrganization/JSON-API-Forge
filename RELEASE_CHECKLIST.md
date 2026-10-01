@@ -1,9 +1,9 @@
-# Release Checklist — v0.5.1
+# Release Checklist — v0.5.3
 
 This checklist is for the Project Owner and authorized maintainers of the canonical repository.
 
 ## Version and source
-- [ ] `VERSION`, `pyproject.toml`, Python/TypeScript/Editor metadata, `CITATION.cff`, `CHANGELOG.md`, `README.md` and `RELEASE.md` identify v0.5.1 where current-version metadata is intended.
+- [ ] `VERSION`, `pyproject.toml`, server Python/TypeScript metadata, `CITATION.cff`, `CHANGELOG.md`, `README.md` and `RELEASE.md` identify v0.5.3 where current-version metadata is intended.
 - [ ] `main` has an empty `app/`; a temporary `forge new` project validates successfully.
 - [ ] `forge doctor` reports no errors.
 - [ ] `forge doctor --production` is exercised with representative production secrets supplied outside Git.
@@ -20,9 +20,6 @@ This checklist is for the Project Owner and authorized maintainers of the canoni
 - [ ] Mongo CRUD/tenant isolation tests pass against MongoDB 8.
 - [ ] TypeScript reference client type-checks on Node 22 / TypeScript 7.
 - [ ] Wheel/sdist build succeeds.
-- [ ] Python library retry/failover, bounded bulk and YoungLion/DDM integration tests pass.
-- [ ] Editor CMake tests and screenshot smoke tests pass on Linux, Windows and macOS x64/ARM64.
-- [ ] All 25 example projects pass generator, schema, CRUD, RPC, idempotency and realtime smoke checks.
 - [ ] Docker image builds.
 - [ ] CodeQL is not red.
 - [ ] No official tag is published while required CI is red.
@@ -38,8 +35,19 @@ This checklist is for the Project Owner and authorized maintainers of the canoni
 - [ ] Dependency/security alerts are reviewed.
 
 ## Publish
-- [ ] Commit the exact v0.5.1 tree to `main` after v0.5.0.
-- [ ] Wait for `main` CI to pass.
-- [ ] Create annotated tag `v0.5.1` from that exact commit and push it.
-- [ ] Wait for the tag release gate.
-- [ ] Publish the GitHub Release using `RELEASE.md`.
+- [ ] Review compatibility changes and the local latency report; do not treat local timings as a production hosting guarantee.
+- [ ] Merge the reviewed v0.5.3 server tree to `main`.
+- [ ] Wait for the latest successful main-push CI, CodeQL and platform-build attempts on that exact SHA.
+- [ ] Run publisher `validate`, then `draft`, and inspect the draft notes/assets.
+- [ ] Let the publisher create the lightweight tag for that SHA; do not pre-create an annotated tag.
+- [ ] Select `publish` only after the release review described in `RELEASE.md`.
+
+## Server publisher
+- [ ] `validate` succeeds for the exact reviewed main SHA and latest workflow attempts.
+- [ ] Draft contains every server archive and checksum, plus verified `release-build.json`.
+- [ ] Remote digests match and existing Editor/SDK releases are untouched.
+- [ ] `publish` is explicitly selected only after reviewing the draft.
+
+## Independent components
+
+Editor, Python SDK and example applications keep their own branch/version/test/release processes. Their checks are required when releasing those components, not proof of this server-only artifact. This publisher does not merge branches or modify their assets.

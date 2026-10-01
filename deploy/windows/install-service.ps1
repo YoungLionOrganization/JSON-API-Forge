@@ -21,7 +21,7 @@ if ($Port -lt 1 -or $Port -gt 65535) { throw 'Port must be between 1 and 65535.'
 $binaryPath = '"{0}" --root "{1}" --host 127.0.0.1 --port {2}' -f $server, $root, $Port
 
 if ($PSCmdlet.ShouldProcess($ServiceName, 'Create Windows service')) {
-    New-Service -Name $ServiceName -BinaryPathName $binaryPath -DisplayName 'JSON API Forge v0.5.1' -StartupType Automatic
+    New-Service -Name $ServiceName -BinaryPathName $binaryPath -DisplayName 'JSON API Forge v0.5.3' -StartupType Automatic
     & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/15000/''/0 | Out-Null
     Write-Host "Created $ServiceName. Grant its service account only the required ACLs, then start it with: Start-Service $ServiceName"
 }

@@ -9,7 +9,7 @@ import uvicorn
 
 
 def parser() -> argparse.ArgumentParser:
-    value = argparse.ArgumentParser(description="Run a packaged JSON API Forge v0.5.1 server")
+    value = argparse.ArgumentParser(description="Run a packaged JSON API Forge v0.5.3 server")
     value.add_argument("--root", default=".", help="Deployment root containing app/, .env and data/")
     value.add_argument("--host", default="127.0.0.1", help="Listen address; use 0.0.0.0 only behind a configured firewall/proxy")
     value.add_argument("--port", type=int, default=8000)

@@ -44,6 +44,50 @@ class ConcurrencyGate:
             self._condition.notify(1)
 
 
+class RequestExecutionTimeoutMiddleware:
+    """Cancel the actual endpoint task if it does not start a response in time.
+
+    Timing only BaseHTTPMiddleware.call_next cancels its response waiter while
+    the endpoint can keep running. Keep streaming lifetime semantics unchanged:
+    once response headers start, the deadline no longer applies.
+    """
+
+    def __init__(self, app, timeout_for_path):
+        self.app = app
+        self.timeout_for_path = timeout_for_path
+
+    async def __call__(self, scope, receive, send):
+        timeout = self.timeout_for_path(scope.get("path", "")) if scope.get("type") == "http" else None
+        if timeout is None:
+            await self.app(scope, receive, send)
+            return
+        started = asyncio.Event()
+
+        async def tracked_send(message):
+            if message["type"] == "http.response.start":
+                started.set()
+            await send(message)
+
+        task = asyncio.create_task(self.app(scope, receive, tracked_send))
+        waiter = asyncio.create_task(started.wait())
+        try:
+            done, _ = await asyncio.wait((task, waiter), timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+            if not done and not started.is_set():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+                from starlette.responses import JSONResponse
+
+                if not started.is_set():
+                    await JSONResponse({"detail": "Request timed out"}, status_code=504)(scope, receive, send)
+            else:
+                await task
+        finally:
+            for pending in (task, waiter):
+                if not pending.done():
+                    pending.cancel()
+            await asyncio.gather(task, waiter, return_exceptions=True)
+
+
 def _address_in_rules(raw: str, rules: list[str]) -> bool:
     try:
         address = ipaddress.ip_address(raw)

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^[0-9A-Za-z._-]+$')][string]$Version = '0.5.1',
+    [ValidatePattern('^[0-9A-Za-z._-]+$')][string]$Version = '0.5.3',
     [string]$Destination = '',
     [ValidatePattern('^[0-9A-Za-z._-]+/[0-9A-Za-z._-]+$')][string]$Repository = 'YoungLionOrganization/JSON-API-Forge'
 )

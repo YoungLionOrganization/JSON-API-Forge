@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+from contextlib import contextmanager
+
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 except ImportError:
@@ -14,6 +17,24 @@ _AUDIT_DROPPED = (
 )
 _AUDIT_WRITE_FAILURES = Counter("json_api_forge_audit_write_failures_total", "Failed audit database batch writes") if Counter else None
 _AUDIT_QUEUE = Gauge("json_api_forge_audit_queue_size", "Current audit queue depth") if Gauge else None
+_STAGES = (
+    Histogram("json_api_forge_stage_duration_seconds", "Startup and request stage latency", ["project", "stage"]) if Histogram else None
+)
+
+
+@contextmanager
+def measure_stage(project: str, stage: str):
+    """Call sites use fixed stage names; credentials, URLs and SQL are never labels."""
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        observe_stage(project, stage, time.perf_counter() - started)
+
+
+def observe_stage(project: str, stage: str, seconds: float):
+    if _STAGES is not None:
+        _STAGES.labels(project=project, stage=stage).observe(seconds)
 
 
 def observe(project: str, method: str, status: int, seconds: float) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from fastapi import HTTPException, Request
@@ -99,7 +100,10 @@ def _coerce_parameter(raw: str, spec: RequestParameterSpec):
         if spec.type == "integer":
             return int(raw)
         if spec.type == "number":
-            return float(raw)
+            value = float(raw)
+            if not math.isfinite(value):
+                raise ValueError("Number must be finite")
+            return value
         if spec.type == "boolean":
             low = str(raw).lower()
             if low in {"true", "1", "yes", "on"}:

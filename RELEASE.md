@@ -1,57 +1,78 @@
-# JSON API Forge v0.5.1
+# JSON API Forge v0.5.3
 
-**Release date:** 29 August 2026
+**Status: in development; publication is a separate manual action.** This release covers the canonical server distribution from `main`. Editor, Python SDK and example applications retain their independent branches, versions and release ownership.
 
-**Status:** Alpha security and delivery hardening release
+## Release summary
 
-**License:** JSON API Forge Source-Available Self-Host License 1.1 (`LicenseRef-JAF-SASH-1.1`)
+v0.5.3 fixes resource-cache isolation, heterogeneous batch inserts, ISO datetime coercion, nullable cursor pagination, PUT defaults, BIGINT declarations, media cleanup and malformed/non-finite input handling. It also improves actual endpoint cancellation, JWKS refresh/client reuse, DNS isolation, readiness concurrency and startup schema/client overhead.
 
-v0.5.1 preserves the v0.5.0 application and visual-authoring contract while tightening untrusted-network, pattern-matching and package-delivery boundaries. `main` remains an example-free runtime; the `python-library`, `Editor` and `exampleApps` branches remain independently buildable distributions.
+Server delivery uses a manual publisher with successful exact-commit workflow gates, artifact provenance, archive integrity checks, complete companion checksums, resumable draft uploads and remote digest verification. The public release body is maintained in [`release/notes/v0.5.3.md`](release/notes/v0.5.3.md).
 
-## Security maintenance
+## Compatibility and upgrade review
 
-- External JWKS retrieval now uses the same DNS-rebinding-resistant transport as controlled HTTP data sources, blocks private/link-local addresses by default, ignores ambient proxies, refuses redirects and caps response size/key count.
-- Request patterns and JSON Schema `pattern`/`patternProperties` matching now use Pydantic Core's linear-time regex engine. Unsupported non-linear features fail at configuration load, and pattern-bearing request strings are bounded.
-- CORS origins, HTTP header maps, data-source/JWKS URLs and WebRTC ICE settings reject ambiguous authorities, credentials, fragments and control-character injection.
-- The TypeScript client rejects non-finite or excessive resource limits, raw/encoded controls, malformed methods and oversized credentials.
-- The WebRTC call page declares its media mode before first use, restoring reliable startup.
+- Existing JSON configuration remains accepted. HTTP source `total_timeout_seconds` is optional and defaults to `null`; existing per-phase timeout/retry behavior is retained unless a total budget is explicitly selected.
+- Request timeout before response headers now cancels the actual async endpoint and waits for cooperative cleanup. Streaming after headers retains its existing lifetime semantics. Running synchronous hooks and some DB/DNS work cannot be forcibly stopped by an async deadline.
+- JWKS refresh throttling defaults to 5 seconds. A newly rotated, previously unknown key may wait up to that interval; expired keys are not used as an outage fallback.
+- Nullable secondary SQL cursors now sort nulls first consistently. Start new pagination sessions after upgrading rather than carrying old cursor tokens across versions.
+- PUT resets omitted nonnullable fields with scalar/server defaults; callable defaults require an explicit value.
+- PostgreSQL BIGINT declarations are corrected for newly created tables. Existing physical columns are unchanged and require an explicit migration if their type must change. Auto-create remains schema creation, not a migration framework.
+- Existing Passenger bridges and deployed custom `forge_wsgi.py` files are not automatically replaced. No worker is started at bridge construction or before the first worker request.
 
-## Runtime and Editor boundary
+Review application-specific hooks, replacement writes and cursor clients before deployment. Preserve the prior package, application configuration and databases for rollback; reverting the runtime does not revert separately applied database migrations.
 
-- The disabled-by-default Editor control plane now supports `graphs/*.forgegraph.json` only when `EDITOR_ALLOW_GRAPHS=true`.
-- Graph documents have exact fields, bounded node/edge counts, direct config targets, safe identifiers, unique input fan-in and acyclic execution.
-- A graph is Editor metadata: compiled configuration must still pass the normal whole-project schema and semantic validation.
-- Existing independent editor token, TLS, trusted-proxy/IP, project allowlist, read-only, creation, hook, size, optimistic-concurrency and atomic-write controls remain enforced.
+## Validation evidence and remaining checks
 
-## Qt Editor
+Latest local validation on Python 3.12:
 
-- C++20/Qt 6 code, typed visual and Unreal-inspired graph modes.
-- Draggable nodes, Bézier wires, pan/zoom, selection/deletion, inspector JSON, validation, auto-layout, fit-to-content and compiled operation preview.
-- Eight staged/atomic project templates and a Python SDK panel for sync, async, cluster, YoungLion and DDM usage.
-- Native Plugin API v2 with explicit enablement, SHA-256 verification, declared permissions and plugin graph-node registration.
-- A bounded catalog browser plus explicit ZIP import; archive paths, entry counts, compression ratios, extracted sizes, manifest/library digests and Plugin API compatibility are validated before staging.
-- Imported native packages remain disabled until the user reviews and explicitly enables them.
-- Native build/test artifacts for Linux, Windows and macOS on x64 and ARM64.
+| Check | Result |
+|---|---|
+| Python tests | 166 passed, 7 external-service tests skipped |
+| Branch-aware coverage | 81.35%; critical module floors passed |
+| Ruff lint/format | Passed |
+| Source manifest | Passed; regenerate and verify for the final commit after documentation changes |
+| Wheel/sdist, Twine, dependency consistency | Passed |
+| TypeScript reference client | Type checking and 3 tests passed during v0.5.3 preparation |
 
-## Python library
+Controlled latency probes used 10 local cold starts and 300 warm requests. The 10-project Passenger first-request median changed from 143 ms to 36 ms; warm medians remained around 1.2 ms. These compare the initial v0.5.3 development implementation with the local latency patch, not a deployed v0.5.1-to-v0.5.3 production upgrade. They exclude hosting worker creation, real DNS/TLS and remote DB latency. See the [analysis and reproduction commands](docs/performance/v0.5.3-latency-analysis.md).
 
-- Typed sync and async clients with capped retries, stable request IDs, bounded response/pagination behavior and attempt observers.
-- Multi-region sync/async clusters with deterministic routing, circuit breaking, health inspection and bounded bulk work.
-- Unsafe writes are not retried or failed over without an idempotency key.
-- Optional `json-api-forge[younglion]` and `json-api-forge[ddm]` installs provide lazy DDM adapters without adding YoungLion to the base wheel.
+GitHub's Python matrix, live PostgreSQL/Redis/MongoDB, container, CodeQL and standalone platform checks must still succeed. The publisher itself has local tests; actual draft creation, remote uploads and public publication require their own Actions execution. A green PR run is review evidence, not the required `main` push run after merge.
 
-## Example systems
+## Prepare the reviewed main commit
 
-The `exampleApps` branch now contains 25 named projects. The 20 generated domain systems each include four SQL resources, three meaningful operations, scoped roles, cache/rate/protection policy, realtime events, an Editor graph and an application runbook. The full catalog is deterministically regenerated and tested across schema, CRUD, filtered list, RPC, idempotency and event lifecycles.
+1. Review and merge the server PR into `main`.
+2. Check that `VERSION`, `pyproject.toml`, TypeScript reference-client metadata, release metadata and expected asset filenames agree on 0.5.3. Regenerate `MANIFEST.sha256` whenever tracked source or documentation changes.
+3. Wait for these workflows on the **same full main commit SHA**, using their latest successful run/attempt:
 
-## Required gates
+   | Metadata entry | Required workflow |
+   |---|---|
+   | `ci.yml` | CI, including its required Python/package/live-service/TypeScript/container jobs |
+   | `codeql.yml` | CodeQL |
+   | `server-builds.yml` | Server and portable platform builds |
 
-Python 3.10–3.14, Ruff, branch coverage and critical-module gates, PostgreSQL 17, Redis 8, MongoDB 8, isolated wheel installation, TypeScript/Node 22, Docker, release-manifest verification and CodeQL must pass before an official tag. Editor artifacts additionally require six native CMake/Qt builds and tests; example artifacts require all 25 project smoke scenarios.
+4. Confirm that the publisher and rerun actor are listed in [`release/authorized_publishers.json`](release/authorized_publishers.json). Both actors are checked.
 
-## Compatibility and limits
+The build exports Linux glibc/musl, Windows, macOS, OCI, wheel/source and cPanel/Passenger packages listed in [`release/assets.json`](release/assets.json). Platform support and architecture coverage remain defined by the [hosting matrix](docs/43-Platform-and-Hosting-Matrix.md) and build matrix; Windows x64 compatibility is not a native Windows ARM64 package.
 
-Existing explicit `app/<Project>/` numbered configurations remain the primary architecture. JSON API Forge remains Alpha: same-database idempotency is not external exactly-once delivery, realtime is not durable, local media is not shared object storage, native plugins are not sandboxed, and declarative SQL is trusted configuration rather than an attacker-safe SQL sandbox.
+## Validate → draft → publish
 
-## Official distribution
+Open **Actions → Validate, draft or publish server release → Run workflow** on `main`. Keep the exact 40-character `source_sha` the same across the intended release steps.
 
-JSON API Forge is source-available for transparency, auditing, self-hosting and private modification. It is not OSI open source. Alternative distributions remain restricted by `LICENSE`; official release authority remains with Cavanşir Qurbanzadə (`@Cavanshirpro`) or a lawful successor/assignee.
+| Mode | Operation |
+|---|---|
+| `validate` | Read-only: verify latest exact-SHA workflow gates, download the existing all-platform artifact, check build identity, expected files, archive integrity and every SHA-256 companion. This is the default. |
+| `draft` | Revalidate, create the lightweight version tag pointing to the selected source commit if absent, then create/resume the private draft and upload verified assets by numeric release ID. |
+| `publish` | Revalidate the build, complete the draft if needed, verify remote asset names/digests and recheck workflow attempts, tag identity and draft status before making the release public. Review the draft first. |
+
+The workflow grants write permission only to the release job and serializes publication without cancelling an active upload. Existing public releases are refused. Existing tags must be lightweight commit refs pointing exactly to the selected SHA; do not create an annotated v0.5.3 tag for this flow.
+
+Inspect [`release/notes/v0.5.3.md`](release/notes/v0.5.3.md), archive names and platform coverage before choosing `publish`. A server draft must contain exactly its verified server asset set. Drafts with Editor/SDK or unexpected assets are refused; other component assets are never overwritten or deleted. A combined component release requires a separate component manifest and publication design.
+
+## Retry and recovery
+
+A failed upload leaves a private incomplete draft. Retrying verifies the digest of every existing asset and uploads only missing files. Conflicting, duplicated or unexpected assets stop the operation for maintainer review; the script does not clobber them. The publisher does not repair or modify an already public release.
+
+Expired artifacts require a new successful platform run and fresh validation. A failed or in-progress latest attempt cannot fall back to an older success. If a required workflow changes or reruns during publication, validation must be repeated.
+
+[`release/release.json`](release/release.json) declares the version, component, workflow gates and artifact. Build identity is stored in `build.json` and carried into the release as `release-build.json`; this records the source SHA, build run ID, run attempt, version and verified asset hashes. The publisher reuses built files and does not rebuild binaries during publication.
+
+Use the updated [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) for the server review. Historical v0.5.1 handoff notes remain historical and are not this version's publication instructions.

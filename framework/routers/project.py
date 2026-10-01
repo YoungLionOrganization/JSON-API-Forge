@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -37,6 +39,15 @@ log = logging.getLogger("json_api_forge.router")
 
 def _resource_namespace(project, resource: ResourceConfig) -> str:
     return f"{project.slug}:{resource.database}:{resource.table}"
+
+
+def _cache_variant(resource, principal) -> str:
+    """Keep shared table invalidation while isolating response/access policies."""
+    policy = {
+        "resource": resource.model_dump(mode="json"),
+        "owner_bypass": bool(resource.owner_bypass_permission and has_permission(principal, resource.owner_bypass_permission)),
+    }
+    return hashlib.sha256(json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def _operation_namespace(project, operation: OperationConfig) -> str:
@@ -246,6 +257,7 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                         _ns,
                         {
                             "kind": "list",
+                            "variant": _cache_variant(_r, p),
                             "query": sorted(request.query_params.multi_items()),
                             "tenant": p.tenant_id,
                             "owner": p.subject if _r.owner_field and "list" in _r.owner_actions else None,
@@ -299,6 +311,7 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                         _ns,
                         {
                             "kind": "read",
+                            "variant": _cache_variant(_r, p),
                             "id": item_id,
                             "tenant": p.tenant_id,
                             "owner": p.subject if _r.owner_field and "read" in _r.owner_actions else None,
@@ -456,6 +469,7 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                         _ns,
                         {
                             "kind": "list",
+                            "variant": _cache_variant(_r, p),
                             "query": sorted(request.query_params.multi_items()),
                             "tenant": p.tenant_id,
                             "owner": p.subject if _r.owner_field and "list" in _r.owner_actions else None,
@@ -514,6 +528,7 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                         _ns,
                         {
                             "kind": "read",
+                            "variant": _cache_variant(_r, p),
                             "id": item_id,
                             "tenant": p.tenant_id,
                             "owner": p.subject if _r.owner_field and "read" in _r.owner_actions else None,

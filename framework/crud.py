@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import timezone
+from datetime import date, datetime, timezone
+from itertools import groupby
 from typing import Any, Literal
 
 from fastapi import HTTPException, Request
-from sqlalchemy import and_, delete, func, insert, or_, select, update
+from sqlalchemy import DateTime, and_, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.schema import Table
 
@@ -61,8 +62,17 @@ def _write_payload(
             has_default = column.default is not None or column.server_default is not None
             if column.nullable:
                 data[name] = None
+            elif column.default is not None and column.default.is_scalar:
+                data[name] = column.default.arg
+            elif column.server_default is not None:
+                data[name] = column.server_default.arg
+            elif column.default is not None:
+                raise HTTPException(status_code=422, detail=f"Replacement must supply field {name!r} with a dynamic default")
             elif not has_default:
                 raise HTTPException(status_code=422, detail={"missing_required_fields": [name]})
+    for name, value in list(data.items()):
+        if isinstance(value, str) and isinstance(table.c[name].type, DateTime):
+            data[name] = _coerce_for_column(table.c[name], value)
     return data
 
 
@@ -79,7 +89,20 @@ def _coerce_for_column(column, value: Any):
             return True
         if low in {"0", "false", "no", "off"}:
             return False
+        raise HTTPException(status_code=422, detail=f"Invalid value for field {column.name}")
     try:
+        if pytype in {datetime, date}:
+            if isinstance(value, pytype):
+                return value
+            if not isinstance(value, str):
+                raise ValueError("Expected ISO date/time")
+            parsed = pytype.fromisoformat(value.replace("Z", "+00:00"))
+            if pytype is datetime:
+                if parsed.tzinfo is None and getattr(column.type, "timezone", False):
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                elif parsed.tzinfo is not None and not getattr(column.type, "timezone", False):
+                    parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
         return pytype(value)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid value for field {column.name}") from exc
@@ -224,14 +247,20 @@ async def list_rows(request: Request, engine, table: Table, resource: ResourceCo
             cursor_value_raw, pk_value_raw = _decode_cursor(cursor)
             cursor_value = _coerce_for_column(cursor_col, cursor_value_raw)
             pk_value = _coerce_for_column(pk_col, pk_value_raw)
+            if pk_value is None:
+                raise HTTPException(status_code=400, detail="Cursor primary key may not be null")
             if cursor_name == resource.primary_key:
                 stmt = stmt.where(pk_col > pk_value)
             else:
-                stmt = stmt.where(or_(cursor_col > cursor_value, and_(cursor_col == cursor_value, pk_col > pk_value)))
+                # NULLs are ordered first consistently across supported SQL engines.
+                if cursor_value is None:
+                    stmt = stmt.where(or_(cursor_col.is_not(None), and_(cursor_col.is_(None), pk_col > pk_value)))
+                else:
+                    stmt = stmt.where(or_(cursor_col > cursor_value, and_(cursor_col == cursor_value, pk_col > pk_value)))
         if cursor_name == resource.primary_key:
             stmt = stmt.order_by(pk_col.asc())
         else:
-            stmt = stmt.order_by(cursor_col.asc(), pk_col.asc())
+            stmt = stmt.order_by(cursor_col.is_not(None).asc(), cursor_col.asc(), pk_col.asc())
         stmt = stmt.limit(limit + 1)
         async with engine.connect() as conn:
             raw_rows = (await conn.execute(stmt)).mappings().all()
@@ -318,10 +347,13 @@ async def batch_create_rows(engine, table: Table, resource: ResourceConfig, prin
         values.append(data)
     try:
         async with engine.begin() as conn:
-            result = await conn.execute(insert(table), values)
+            # SQLAlchemy executemany derives columns from the first dictionary.
+            # Preserve each row's fields and defaults in the same atomic transaction.
+            for _fields, group in groupby(values, key=lambda data: tuple(sorted(data))):
+                await conn.execute(insert(table), list(group))
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Batch conflicts with an existing row or database constraint") from exc
-    return {"created": len(values), "rowcount": max(result.rowcount or len(values), 0)}
+    return {"created": len(values), "rowcount": len(values)}
 
 
 async def update_row(

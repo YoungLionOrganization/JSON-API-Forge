@@ -11,6 +11,7 @@ from .db import build_registry
 from .events import EventHub, build_event_hub
 from .media import build_media_store
 from .mongo import build_mongo_registry
+from .observability import measure_stage
 from .protection import ConcurrencyGate
 from .rate_limit import MemoryRateLimiter, RedisRateLimiter
 from .settings import settings
@@ -66,8 +67,10 @@ class RuntimeManager:
     async def _start_runtime(self, runtime: ProjectRuntime) -> None:
         cfg = runtime.config
         try:
-            runtime.registry = await build_registry(cfg)
-            runtime.mongo_registry = await build_mongo_registry(cfg)
+            with measure_stage(cfg.slug, "sql_startup"):
+                runtime.registry = await build_registry(cfg)
+            with measure_stage(cfg.slug, "mongo_startup"):
+                runtime.mongo_registry = await build_mongo_registry(cfg)
             if cfg.rate_limit.backend == "redis":
                 if not settings.redis_url:
                     raise RuntimeError(f"Project {cfg.slug}: Redis rate limiter requires REDIS_URL")

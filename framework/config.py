@@ -199,6 +199,7 @@ class SecurityConfig(ForgeModel):
     jwt_trust_tenant_claim: bool = False
     jwks_cache_ttl_seconds: int = Field(default=600, ge=30)
     jwks_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    jwks_refresh_interval_seconds: float = Field(default=5.0, ge=0.1, le=60)
     jwks_max_response_bytes: int = Field(default=1024 * 1024, ge=4096, le=16 * 1024 * 1024)
     jwks_allow_private_networks: bool = False
     jwks_allow_insecure_http: bool = False
@@ -512,6 +513,7 @@ class DataSourceConfig(ForgeModel):
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
     headers: dict[str, str] = Field(default_factory=dict)
     timeout_seconds: float = Field(default=10.0, gt=0)
+    total_timeout_seconds: float | None = Field(default=None, gt=0)
     max_response_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
     allow_insecure_http: bool = False
     allow_private_networks: bool = False
@@ -684,7 +686,7 @@ class FeaturePacksConfig(ForgeModel):
 class ProjectConfig(ForgeModel):
     slug: str
     name: str
-    version: str = "0.5.1"
+    version: str = "0.5.3"
     enabled: bool = True
     api_prefix: str | None = None
     docs_enabled: bool = True
@@ -752,7 +754,7 @@ class ProjectConfig(ForgeModel):
 
 class ForgeConfig(ForgeModel):
     name: str = "JSON API Forge"
-    version: str = "0.5.1"
+    version: str = "0.5.3"
     projects: list[ProjectConfig]
 
 
