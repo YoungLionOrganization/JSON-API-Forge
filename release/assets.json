@@ -1,14 +1,14 @@
 [
-  "JSON-API-Forge-v0.5.3-linux-glibc-x64.tar.gz",
-  "JSON-API-Forge-v0.5.3-linux-glibc-arm64.tar.gz",
-  "JSON-API-Forge-v0.5.3-linux-musl-x64.tar.gz",
-  "JSON-API-Forge-v0.5.3-linux-musl-arm64.tar.gz",
-  "JSON-API-Forge-v0.5.3-windows-x64.zip",
-  "JSON-API-Forge-v0.5.3-macos-x64.tar.gz",
-  "JSON-API-Forge-v0.5.3-macos-arm64.tar.gz",
-  "JSON-API-Forge-v0.5.3-cpanel-passenger.tar.gz",
-  "JSON-API-Forge-v0.5.3-oci-x64.tar",
-  "JSON-API-Forge-v0.5.3-oci-arm64.tar",
-  "json_api_forge-0.5.3-py3-none-any.whl",
-  "json_api_forge-0.5.3.tar.gz"
+  "JSON-API-Forge-v0.5.2-linux-glibc-x64.tar.gz",
+  "JSON-API-Forge-v0.5.2-linux-glibc-arm64.tar.gz",
+  "JSON-API-Forge-v0.5.2-linux-musl-x64.tar.gz",
+  "JSON-API-Forge-v0.5.2-linux-musl-arm64.tar.gz",
+  "JSON-API-Forge-v0.5.2-windows-x64.zip",
+  "JSON-API-Forge-v0.5.2-macos-x64.tar.gz",
+  "JSON-API-Forge-v0.5.2-macos-arm64.tar.gz",
+  "JSON-API-Forge-v0.5.2-cpanel-passenger.tar.gz",
+  "JSON-API-Forge-v0.5.2-oci-x64.tar",
+  "JSON-API-Forge-v0.5.2-oci-arm64.tar",
+  "json_api_forge-0.5.2-py3-none-any.whl",
+  "json_api_forge-0.5.2.tar.gz"
 ]

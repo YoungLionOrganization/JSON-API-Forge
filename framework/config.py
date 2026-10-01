@@ -686,7 +686,7 @@ class FeaturePacksConfig(ForgeModel):
 class ProjectConfig(ForgeModel):
     slug: str
     name: str
-    version: str = "0.5.3"
+    version: str = "0.5.2"
     enabled: bool = True
     api_prefix: str | None = None
     docs_enabled: bool = True
@@ -754,7 +754,7 @@ class ProjectConfig(ForgeModel):
 
 class ForgeConfig(ForgeModel):
     name: str = "JSON API Forge"
-    version: str = "0.5.3"
+    version: str = "0.5.2"
     projects: list[ProjectConfig]
 
 
