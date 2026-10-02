@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../../schemas/manifest.schema.json",
+  "slug": "app2",
+  "name": "Second Independent App",
+  "version": "1.0.0",
+  "api_prefix": "/api/app2/v1",
+  "databases": {
+    "primary": {
+      "url": "$env:APP2_DATABASE_URL:-sqlite+aiosqlite:///./data/app2.db"
+    }
+  },
+  "security": {
+    "bootstrap_admin_key": "$env:APP2_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_enabled": true,
+    "jwt_enabled": false
+  },
+  "roles": {
+    "admin": {"permissions": ["*"]},
+    "reader": {"permissions": ["catalog.list", "catalog.read", "system.meta.read"]}
+  },
+  "cache": {"enabled": true, "backend": "memory", "default_ttl_seconds": 60},
+  "rate_limit": {"enabled": true, "backend": "memory", "requests": 300, "window_seconds": 60},
+  "resources": [
+    {
+      "database": "primary",
+      "table": "catalog",
+      "path": "catalog",
+      "auto_create": true,
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "name": {"type": "string", "nullable": false, "index": true},
+        "data": {"type": "json"}
+      },
+      "writable_fields": ["name", "data"],
+      "allowed_filters": ["name"],
+      "allowed_sort": ["id", "name"]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@json-api-forge/reference-client",
+  "version": "0.5.2",
+  "private": true,
+  "description": "Reference TypeScript client for JSON API Forge official releases",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc --outDir .test-dist --noEmit false --module NodeNext --moduleResolution NodeNext && node --test test/*.test.mjs"
+  },
+  "devDependencies": {"typescript": "^7.0.2"}
+}

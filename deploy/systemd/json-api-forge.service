@@ -1,0 +1,31 @@
+[Unit]
+Description=JSON API Forge v0.5.2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=forge
+Group=forge
+WorkingDirectory=/opt/json-api-forge/deployment
+EnvironmentFile=/etc/json-api-forge/forge.env
+ExecStart=/opt/json-api-forge/bin/forge-server --root /opt/json-api-forge/deployment --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+ReadWritePaths=/opt/json-api-forge/deployment/data /opt/json-api-forge/deployment/media /opt/json-api-forge/deployment/logs
+
+[Install]
+WantedBy=multi-user.target

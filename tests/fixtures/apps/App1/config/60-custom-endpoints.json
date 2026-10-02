@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "custom_endpoints": [
+    {
+      "path": "plugin/ping",
+      "method": "POST",
+      "permission": "system.meta.read",
+      "handler": "tests.fixtures.apps.App1.hooks.example:ping_plugin",
+      "summary": "Example project-specific plugin hook"
+    }
+  ]
+}

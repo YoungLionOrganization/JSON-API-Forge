@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "media": {
+    "enabled": true,
+    "backend": "local",
+    "local_directory": "./data/media-app1",
+    "max_upload_bytes": 26214400,
+    "allowed_mime_types": ["image/jpeg","image/png","image/webp","image/gif","video/mp4","audio/mpeg","audio/ogg","application/pdf"],
+    "public": false,
+    "deduplicate": true,
+    "signed_urls_enabled": false
+  },
+  "features": {
+    "messaging": {"enabled":true,"database":"primary","table_prefix":"msg_"},
+    "social": {"enabled":true,"database":"primary","table_prefix":"social_"},
+    "gaming": {"enabled":true,"database":"primary","table_prefix":"game_"}
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "project": "JSON API Forge",
+  "product_version": "0.5.2",
+  "license_name": "JSON API Forge Source-Available Self-Host License 1.1",
+  "license_version": "1.1",
+  "spdx_license_id": "LicenseRef-JAF-SASH-1.1",
+  "license_file": "LICENSE",
+  "license_sha256": "efeb6b66452bc9ebe1333e7ef29ba0ffaca4f2dbee9537895eb278b20e56dcb2",
+  "license_url": "https://github.com/YoungLionOrganization/JSON-API-Forge/blob/main/LICENSE",
+  "osi_approved": false,
+  "scope": "Original project material only; third-party components retain their own licenses.",
+  "canonical_repository": "https://github.com/YoungLionOrganization/JSON-API-Forge",
+  "source_available": true,
+  "copyright_holder": "Cavanşir Qurbanzadə (@Cavanshirpro)",
+  "redistribution": "Written owner authorization required, except the narrow upstream contribution-fork exception in LICENSE section 4."
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "cache": {
+    "enabled": true,
+    "backend": "memory",
+    "default_ttl_seconds": 30,
+    "max_entries": 20000,
+    "cache_lists": true,
+    "cache_reads": true
+  },
+  "rate_limit": {
+    "enabled": true,
+    "backend": "memory",
+    "requests": 600,
+    "window_seconds": 60,
+    "burst": 120
+  },
+  "protection": {
+    "max_request_body_bytes": 33554432,
+    "max_concurrent_requests": 1000,
+    "request_timeout_seconds": 30,
+    "max_queue_wait_seconds": 1,
+    "gzip_minimum_size": 1024,
+    "trusted_hosts": ["*"]
+  },
+  "realtime": {"backend": "memory", "redis_prefix": "forge:events"},
+  "observability": {"metrics_enabled": true, "metrics_path": "/metrics"}
+}

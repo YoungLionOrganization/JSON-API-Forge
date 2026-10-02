@@ -1,0 +1,61 @@
+name: Validate, draft or publish server release
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character main commit with successful CI, CodeQL and platform builds
+        required: true
+        type: string
+      mode:
+        description: Release operation
+        required: true
+        default: validate
+        type: choice
+        options: [validate, draft, publish]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: server-release-v0.5.2
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+      - name: Validate gates, provenance and complete checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: python scripts/publish_release.py --sha "$SOURCE_SHA" --mode validate
+  release:
+    if: inputs.mode != 'validate'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+      - name: Revalidate and apply selected operation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_MODE: ${{ inputs.mode }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: python scripts/publish_release.py --sha "$SOURCE_SHA" --mode "$RELEASE_MODE"

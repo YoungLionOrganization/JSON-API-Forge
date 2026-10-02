@@ -1,0 +1,86 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "resources": [
+    {
+      "database": "primary",
+      "table": "economy_accounts",
+      "path": "economy/accounts",
+      "auto_create": true,
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "discord_user_id": {"type": "string", "nullable": false, "unique": true, "index": true, "max_length": 32},
+        "balance": {"type": "integer", "nullable": false, "default": 0, "index": true}
+      },
+      "writable_fields": ["discord_user_id"],
+      "allowed_filters": ["discord_user_id", "balance"],
+      "filter_operators": ["eq", "ne", "gt", "gte", "lt", "lte", "in"],
+      "allowed_sort": ["id", "balance", "discord_user_id"],
+      "permissions": {"list": "economy.accounts.read", "read": "economy.accounts.read", "create": "economy.accounts.create"},
+      "allowed_actions": ["list", "read", "create"]
+    },
+    {
+      "database": "primary",
+      "table": "economy_ledger",
+      "path": "economy/ledger",
+      "auto_create": true,
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "from_user": {"type": "string", "index": true, "max_length": 32},
+        "to_user": {"type": "string", "index": true, "max_length": 32},
+        "amount": {"type": "integer", "nullable": false},
+        "reason": {"type": "string", "nullable": false, "max_length": 80},
+        "request_id": {"type": "string", "index": true, "max_length": 64}
+      },
+      "allowed_actions": ["list", "read"],
+      "allowed_filters": ["from_user", "to_user", "reason"],
+      "allowed_sort": ["id", "amount"],
+      "permissions": {"list": "economy.ledger.read", "read": "economy.ledger.read"}
+    }
+  ],
+  "operations": [
+    {
+      "name": "economy.balance",
+      "path": "rpc/economy.balance/{user_id}",
+      "method": "GET",
+      "database": "primary",
+      "permission": "economy.balance.read",
+      "transaction": false,
+      "cache": {"enabled": true, "ttl_seconds": 5, "vary_by_principal": false, "stale_ttl_seconds": 0},
+      "statements": [{"sql": "SELECT discord_user_id, balance FROM economy_accounts WHERE discord_user_id = :user_id", "mode": "fetch_one", "params": {"user_id": "$path.user_id"}, "result_name": "account", "max_rows": 1}],
+      "summary": "Read a Discord economy balance",
+      "parameters": [{"name": "user_id", "location": "path", "type": "string", "required": true, "min_length": 1, "max_length": 32, "description": "Discord user ID"}]
+    },
+    {
+      "name": "economy.grant",
+      "method": "POST",
+      "database": "primary",
+      "permission": "economy.grant",
+      "transaction": true,
+      "input_schema": {"type": "object", "required": ["user_id", "amount", "reason"], "additionalProperties": false, "properties": {"user_id": {"type": "string", "minLength": 1, "maxLength": 32}, "amount": {"type": "integer", "minimum": 1, "maximum": 1000000000}, "reason": {"type": "string", "minLength": 1, "maxLength": 80}}},
+      "statements": [
+        {"sql": "UPDATE economy_accounts SET balance = balance + :amount WHERE discord_user_id = :user_id", "mode": "execute", "params": {"amount": "$body.amount", "user_id": "$body.user_id"}, "require_rowcount_min": 1, "require_rowcount_max": 1, "result_name": "account_update"},
+        {"sql": "INSERT INTO economy_ledger (from_user, to_user, amount, reason, request_id) VALUES (:from_user, :to_user, :amount, :reason, :request_id)", "mode": "execute", "params": {"from_user": "system", "to_user": "$body.user_id", "amount": "$body.amount", "reason": "$body.reason", "request_id": "$header.Idempotency-Key"}, "result_name": "ledger"}
+      ],
+      "invalidate_resources": ["economy/accounts", "economy/ledger"],
+      "invalidate_operations": ["economy.balance"],
+      "idempotency": true
+    },
+    {
+      "name": "economy.transfer",
+      "method": "POST",
+      "database": "primary",
+      "permission": "economy.transfer",
+      "transaction": true,
+      "idempotency": true,
+      "input_schema": {"type": "object", "required": ["from_user", "to_user", "amount"], "additionalProperties": false, "properties": {"from_user": {"type": "string", "minLength": 1, "maxLength": 32}, "to_user": {"type": "string", "minLength": 1, "maxLength": 32}, "amount": {"type": "integer", "minimum": 1, "maximum": 1000000000}}},
+      "statements": [
+        {"sql": "UPDATE economy_accounts SET balance = balance - :amount WHERE discord_user_id = :from_user AND balance >= :amount", "mode": "execute", "params": {"amount": "$body.amount", "from_user": "$body.from_user"}, "require_rowcount_min": 1, "require_rowcount_max": 1, "result_name": "debit"},
+        {"sql": "UPDATE economy_accounts SET balance = balance + :amount WHERE discord_user_id = :to_user", "mode": "execute", "params": {"amount": "$body.amount", "to_user": "$body.to_user"}, "require_rowcount_min": 1, "require_rowcount_max": 1, "result_name": "credit"},
+        {"sql": "INSERT INTO economy_ledger (from_user, to_user, amount, reason, request_id) VALUES (:from_user, :to_user, :amount, :reason, :request_id)", "mode": "execute", "params": {"from_user": "$body.from_user", "to_user": "$body.to_user", "amount": "$body.amount", "reason": "transfer", "request_id": "$header.Idempotency-Key"}, "result_name": "ledger"}
+      ],
+      "invalidate_resources": ["economy/accounts", "economy/ledger"],
+      "invalidate_operations": ["economy.balance"],
+      "summary": "Atomic balance transfer with insufficient-funds rollback"
+    }
+  ]
+}

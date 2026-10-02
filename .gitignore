@@ -1,0 +1,47 @@
+# Python / virtual environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Root runtime state (do not ignore app/AppX/data or other project-owned folders)
+/data/
+/logs/
+/media/
+*.log
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Test / coverage artifacts
+coverage.xml
+coverage.json
+.coverage
+htmlcov/
+
+# JavaScript / TypeScript dependencies and test output
+node_modules/
+.test-dist/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# IDE / OS
+.idea/
+.vscode/*.local.json
+.DS_Store
+Thumbs.db

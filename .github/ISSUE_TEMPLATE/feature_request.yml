@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose an improvement to the canonical JSON API Forge project
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What real problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the API/configuration/runtime behavior you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: license
+    attributes:
+      label: Project model
+      options:
+        - label: I understand JSON API Forge is source-available and alternative public distributions are not authorized by the project license.
+          required: true

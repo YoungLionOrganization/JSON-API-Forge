@@ -1,0 +1,2870 @@
+{
+  "$defs": {
+    "CacheConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "backend": {
+          "default": "memory",
+          "enum": [
+            "memory",
+            "redis",
+            "tiered"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "default_ttl_seconds": {
+          "default": 30,
+          "minimum": 1,
+          "title": "Default Ttl Seconds",
+          "type": "integer"
+        },
+        "stale_ttl_seconds": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Stale Ttl Seconds",
+          "type": "integer"
+        },
+        "max_entries": {
+          "default": 10000,
+          "minimum": 100,
+          "title": "Max Entries",
+          "type": "integer"
+        },
+        "key_prefix": {
+          "default": "forge",
+          "title": "Key Prefix",
+          "type": "string"
+        },
+        "cache_lists": {
+          "default": true,
+          "title": "Cache Lists",
+          "type": "boolean"
+        },
+        "cache_reads": {
+          "default": true,
+          "title": "Cache Reads",
+          "type": "boolean"
+        },
+        "fail_open": {
+          "default": true,
+          "title": "Fail Open",
+          "type": "boolean"
+        }
+      },
+      "title": "CacheConfig",
+      "type": "object"
+    },
+    "ColumnConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "default": "string",
+          "title": "Type",
+          "type": "string"
+        },
+        "nullable": {
+          "default": true,
+          "title": "Nullable",
+          "type": "boolean"
+        },
+        "primary_key": {
+          "default": false,
+          "title": "Primary Key",
+          "type": "boolean"
+        },
+        "unique": {
+          "default": false,
+          "title": "Unique",
+          "type": "boolean"
+        },
+        "index": {
+          "default": false,
+          "title": "Index",
+          "type": "boolean"
+        },
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Length"
+        }
+      },
+      "title": "ColumnConfig",
+      "type": "object"
+    },
+    "CustomEndpointConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "method": {
+          "default": "GET",
+          "title": "Method",
+          "type": "string"
+        },
+        "public": {
+          "default": false,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permission"
+        },
+        "handler": {
+          "title": "Handler",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "deprecated": {
+          "default": false,
+          "title": "Deprecated",
+          "type": "boolean"
+        },
+        "include_in_schema": {
+          "default": true,
+          "title": "Include In Schema",
+          "type": "boolean"
+        },
+        "input_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Schema"
+        },
+        "input_mode": {
+          "default": "json",
+          "enum": [
+            "json",
+            "form",
+            "text",
+            "bytes",
+            "none"
+          ],
+          "title": "Input Mode",
+          "type": "string"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/RequestParameterSpec"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "background_hooks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Background Hooks",
+          "type": "array"
+        },
+        "response": {
+          "$ref": "#/$defs/ResponseSpec"
+        },
+        "openapi_extra": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Openapi Extra"
+        }
+      },
+      "required": [
+        "path",
+        "handler"
+      ],
+      "title": "CustomEndpointConfig",
+      "type": "object"
+    },
+    "DataSourceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "type": {
+          "enum": [
+            "json_file",
+            "yaml_file",
+            "csv_file",
+            "static",
+            "http"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "public": {
+          "default": false,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "public_write": {
+          "default": false,
+          "title": "Public Write",
+          "type": "boolean"
+        },
+        "permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permission"
+        },
+        "read_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Read Permission"
+        },
+        "write_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Write Permission"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/RequestParameterSpec"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File"
+        },
+        "data": {
+          "default": null,
+          "title": "Data"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "method": {
+          "default": "GET",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "object"
+        },
+        "timeout_seconds": {
+          "default": 10.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "total_timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Timeout Seconds"
+        },
+        "max_response_bytes": {
+          "default": 2097152,
+          "maximum": 104857600,
+          "minimum": 1024,
+          "title": "Max Response Bytes",
+          "type": "integer"
+        },
+        "allow_insecure_http": {
+          "default": false,
+          "title": "Allow Insecure Http",
+          "type": "boolean"
+        },
+        "allow_private_networks": {
+          "default": false,
+          "title": "Allow Private Networks",
+          "type": "boolean"
+        },
+        "retries": {
+          "default": 2,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Retries",
+          "type": "integer"
+        },
+        "retry_non_idempotent": {
+          "default": false,
+          "title": "Retry Non Idempotent",
+          "type": "boolean"
+        },
+        "writable": {
+          "default": false,
+          "title": "Writable",
+          "type": "boolean"
+        },
+        "file_lock_timeout_seconds": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "maximum": 60,
+          "title": "File Lock Timeout Seconds",
+          "type": "number"
+        },
+        "id_field": {
+          "default": "id",
+          "title": "Id Field",
+          "type": "string"
+        },
+        "max_items": {
+          "default": 10000,
+          "minimum": 1,
+          "title": "Max Items",
+          "type": "integer"
+        },
+        "allowed_filters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Filters",
+          "type": "array"
+        },
+        "allowed_sort": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Sort",
+          "type": "array"
+        },
+        "cache_ttl_seconds": {
+          "default": 15,
+          "minimum": 0,
+          "title": "Cache Ttl Seconds",
+          "type": "integer"
+        },
+        "stale_ttl_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stale Ttl Seconds"
+        },
+        "forward_query": {
+          "default": true,
+          "title": "Forward Query",
+          "type": "boolean"
+        },
+        "forward_body": {
+          "default": true,
+          "title": "Forward Body",
+          "type": "boolean"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "DataSourceConfig",
+      "type": "object"
+    },
+    "DatabaseConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "echo": {
+          "default": false,
+          "title": "Echo",
+          "type": "boolean"
+        },
+        "support_schema_mode": {
+          "default": "create",
+          "enum": [
+            "create",
+            "validate"
+          ],
+          "title": "Support Schema Mode",
+          "type": "string"
+        },
+        "pool_pre_ping": {
+          "default": true,
+          "title": "Pool Pre Ping",
+          "type": "boolean"
+        },
+        "pool_size": {
+          "default": 10,
+          "minimum": 1,
+          "title": "Pool Size",
+          "type": "integer"
+        },
+        "max_overflow": {
+          "default": 20,
+          "minimum": 0,
+          "title": "Max Overflow",
+          "type": "integer"
+        },
+        "pool_timeout": {
+          "default": 30,
+          "minimum": 1,
+          "title": "Pool Timeout",
+          "type": "integer"
+        },
+        "pool_recycle": {
+          "default": 1800,
+          "minimum": -1,
+          "title": "Pool Recycle",
+          "type": "integer"
+        },
+        "isolation_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Isolation Level"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DatabaseConfig",
+      "type": "object"
+    },
+    "DependencySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "callable": {
+          "title": "Callable",
+          "type": "string"
+        },
+        "use_cache": {
+          "default": true,
+          "title": "Use Cache",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "callable"
+      ],
+      "title": "DependencySpec",
+      "type": "object"
+    },
+    "EventChannelConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "public_publish": {
+          "default": false,
+          "title": "Public Publish",
+          "type": "boolean"
+        },
+        "public_subscribe": {
+          "default": false,
+          "title": "Public Subscribe",
+          "type": "boolean"
+        },
+        "publish_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publish Permission"
+        },
+        "subscribe_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subscribe Permission"
+        },
+        "websocket_enabled": {
+          "default": true,
+          "title": "Websocket Enabled",
+          "type": "boolean"
+        },
+        "sse_enabled": {
+          "default": true,
+          "title": "Sse Enabled",
+          "type": "boolean"
+        },
+        "max_message_bytes": {
+          "default": 65536,
+          "maximum": 1048576,
+          "minimum": 128,
+          "title": "Max Message Bytes",
+          "type": "integer"
+        },
+        "queue_size": {
+          "default": 256,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Queue Size",
+          "type": "integer"
+        },
+        "max_websocket_connections": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Websocket Connections",
+          "type": "integer"
+        },
+        "max_sse_connections": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Sse Connections",
+          "type": "integer"
+        },
+        "allowed_origins": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Origins",
+          "type": "array"
+        },
+        "heartbeat_seconds": {
+          "default": 15,
+          "minimum": 1,
+          "title": "Heartbeat Seconds",
+          "type": "integer"
+        },
+        "websocket_message_requests": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Websocket Message Requests"
+        },
+        "websocket_message_window_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Websocket Message Window Seconds"
+        },
+        "websocket_message_burst": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Websocket Message Burst"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "EventChannelConfig",
+      "type": "object"
+    },
+    "FeaturePacksConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "messaging": {
+          "$ref": "#/$defs/MessagingPackConfig"
+        },
+        "social": {
+          "$ref": "#/$defs/SocialPackConfig"
+        },
+        "gaming": {
+          "$ref": "#/$defs/GamingPackConfig"
+        }
+      },
+      "title": "FeaturePacksConfig",
+      "type": "object"
+    },
+    "GamingPackConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "table_prefix": {
+          "default": "game_",
+          "title": "Table Prefix",
+          "type": "string"
+        },
+        "database": {
+          "default": "primary",
+          "title": "Database",
+          "type": "string"
+        },
+        "tenant_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tenant Field"
+        }
+      },
+      "title": "GamingPackConfig",
+      "type": "object"
+    },
+    "MediaConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "backend": {
+          "const": "local",
+          "default": "local",
+          "title": "Backend",
+          "type": "string"
+        },
+        "local_directory": {
+          "default": "./data/media",
+          "title": "Local Directory",
+          "type": "string"
+        },
+        "max_upload_bytes": {
+          "default": 26214400,
+          "maximum": 1073741824,
+          "minimum": 1,
+          "title": "Max Upload Bytes",
+          "type": "integer"
+        },
+        "max_batch_files": {
+          "default": 8,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Batch Files",
+          "type": "integer"
+        },
+        "max_owner_bytes": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Owner Bytes"
+        },
+        "allowed_mime_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Mime Types",
+          "type": "array"
+        },
+        "allowed_extensions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Extensions",
+          "type": "array"
+        },
+        "public": {
+          "default": false,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "upload_permission": {
+          "default": "media.upload",
+          "title": "Upload Permission",
+          "type": "string"
+        },
+        "read_permission": {
+          "default": "media.read",
+          "title": "Read Permission",
+          "type": "string"
+        },
+        "delete_permission": {
+          "default": "media.delete",
+          "title": "Delete Permission",
+          "type": "string"
+        },
+        "admin_permission": {
+          "default": "media.admin",
+          "title": "Admin Permission",
+          "type": "string"
+        },
+        "owner_delete_only": {
+          "default": false,
+          "title": "Owner Delete Only",
+          "type": "boolean"
+        },
+        "deduplicate": {
+          "default": true,
+          "title": "Deduplicate",
+          "type": "boolean"
+        },
+        "deduplicate_scope": {
+          "default": "owner",
+          "enum": [
+            "owner",
+            "project"
+          ],
+          "title": "Deduplicate Scope",
+          "type": "string"
+        },
+        "signed_urls_enabled": {
+          "default": false,
+          "title": "Signed Urls Enabled",
+          "type": "boolean"
+        },
+        "signing_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signing Secret"
+        },
+        "signed_url_ttl_seconds": {
+          "default": 300,
+          "maximum": 86400,
+          "minimum": 1,
+          "title": "Signed Url Ttl Seconds",
+          "type": "integer"
+        },
+        "post_upload_hooks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Post Upload Hooks",
+          "type": "array"
+        }
+      },
+      "title": "MediaConfig",
+      "type": "object"
+    },
+    "MessagingPackConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "table_prefix": {
+          "default": "msg_",
+          "title": "Table Prefix",
+          "type": "string"
+        },
+        "database": {
+          "default": "primary",
+          "title": "Database",
+          "type": "string"
+        },
+        "tenant_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tenant Field"
+        }
+      },
+      "title": "MessagingPackConfig",
+      "type": "object"
+    },
+    "MongoDatabaseConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        },
+        "database": {
+          "title": "Database",
+          "type": "string"
+        },
+        "max_pool_size": {
+          "default": 100,
+          "minimum": 1,
+          "title": "Max Pool Size",
+          "type": "integer"
+        },
+        "min_pool_size": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Min Pool Size",
+          "type": "integer"
+        },
+        "server_selection_timeout_ms": {
+          "default": 5000,
+          "minimum": 100,
+          "title": "Server Selection Timeout Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "uri",
+        "database"
+      ],
+      "title": "MongoDatabaseConfig",
+      "type": "object"
+    },
+    "MongoResourceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "database": {
+          "default": "primary",
+          "title": "Database",
+          "type": "string"
+        },
+        "collection": {
+          "title": "Collection",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "allowed_actions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "permissions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "object"
+        },
+        "writable_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Writable Fields"
+        },
+        "hidden_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Hidden Fields",
+          "type": "array"
+        },
+        "allowed_filters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Filters",
+          "type": "array"
+        },
+        "filter_operators": {
+          "items": {
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in"
+            ],
+            "type": "string"
+          },
+          "title": "Filter Operators",
+          "type": "array"
+        },
+        "allowed_sort": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Sort",
+          "type": "array"
+        },
+        "default_limit": {
+          "default": 50,
+          "minimum": 1,
+          "title": "Default Limit",
+          "type": "integer"
+        },
+        "max_limit": {
+          "default": 200,
+          "minimum": 1,
+          "title": "Max Limit",
+          "type": "integer"
+        },
+        "tenant_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tenant Field"
+        },
+        "owner_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Field"
+        },
+        "owner_actions": {
+          "items": {
+            "enum": [
+              "list",
+              "read",
+              "update",
+              "delete"
+            ],
+            "type": "string"
+          },
+          "title": "Owner Actions",
+          "type": "array"
+        },
+        "owner_bypass_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Bypass Permission"
+        },
+        "soft_delete_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Soft Delete Field"
+        },
+        "cache": {
+          "$ref": "#/$defs/ResourceCacheConfig"
+        },
+        "create_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Create Schema"
+        },
+        "update_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Update Schema"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "collection",
+        "path"
+      ],
+      "title": "MongoResourceConfig",
+      "type": "object"
+    },
+    "ObservabilityConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "metrics_enabled": {
+          "default": true,
+          "title": "Metrics Enabled",
+          "type": "boolean"
+        },
+        "metrics_path": {
+          "default": "/metrics",
+          "title": "Metrics Path",
+          "type": "string"
+        }
+      },
+      "title": "ObservabilityConfig",
+      "type": "object"
+    },
+    "OperationCacheConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "ttl_seconds": {
+          "default": 15,
+          "minimum": 1,
+          "title": "Ttl Seconds",
+          "type": "integer"
+        },
+        "stale_ttl_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stale Ttl Seconds"
+        },
+        "vary_by_principal": {
+          "default": true,
+          "title": "Vary By Principal",
+          "type": "boolean"
+        }
+      },
+      "title": "OperationCacheConfig",
+      "type": "object"
+    },
+    "OperationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "method": {
+          "default": "POST",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "database": {
+          "default": "primary",
+          "title": "Database",
+          "type": "string"
+        },
+        "public": {
+          "default": false,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permission"
+        },
+        "transaction": {
+          "default": true,
+          "title": "Transaction",
+          "type": "boolean"
+        },
+        "input_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Schema"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/RequestParameterSpec"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "statements": {
+          "items": {
+            "$ref": "#/$defs/SQLStatementConfig"
+          },
+          "title": "Statements",
+          "type": "array"
+        },
+        "allow_ddl": {
+          "default": false,
+          "title": "Allow Ddl",
+          "type": "boolean"
+        },
+        "idempotency": {
+          "default": false,
+          "title": "Idempotency",
+          "type": "boolean"
+        },
+        "idempotency_ttl_seconds": {
+          "default": 86400,
+          "maximum": 31536000,
+          "minimum": 60,
+          "title": "Idempotency Ttl Seconds",
+          "type": "integer"
+        },
+        "idempotency_cleanup_batch_size": {
+          "default": 1000,
+          "maximum": 50000,
+          "minimum": 10,
+          "title": "Idempotency Cleanup Batch Size",
+          "type": "integer"
+        },
+        "idempotency_max_response_bytes": {
+          "default": 262144,
+          "maximum": 16777216,
+          "minimum": 1024,
+          "title": "Idempotency Max Response Bytes",
+          "type": "integer"
+        },
+        "cache": {
+          "$ref": "#/$defs/OperationCacheConfig"
+        },
+        "invalidate_resources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Invalidate Resources",
+          "type": "array"
+        },
+        "invalidate_operations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Invalidate Operations",
+          "type": "array"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "deprecated": {
+          "default": false,
+          "title": "Deprecated",
+          "type": "boolean"
+        },
+        "background_hooks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Background Hooks",
+          "type": "array"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "OperationConfig",
+      "type": "object"
+    },
+    "ProtectionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "max_request_body_bytes": {
+          "default": 8388608,
+          "minimum": 1024,
+          "title": "Max Request Body Bytes",
+          "type": "integer"
+        },
+        "trusted_proxy_cidrs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trusted Proxy Cidrs",
+          "type": "array"
+        },
+        "max_concurrent_requests": {
+          "default": 1000,
+          "minimum": 1,
+          "title": "Max Concurrent Requests",
+          "type": "integer"
+        },
+        "request_timeout_seconds": {
+          "default": 30.0,
+          "exclusiveMinimum": 0,
+          "title": "Request Timeout Seconds",
+          "type": "number"
+        },
+        "trusted_hosts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trusted Hosts",
+          "type": "array"
+        },
+        "gzip_minimum_size": {
+          "default": 1024,
+          "minimum": 0,
+          "title": "Gzip Minimum Size",
+          "type": "integer"
+        },
+        "reject_when_saturated": {
+          "default": true,
+          "title": "Reject When Saturated",
+          "type": "boolean"
+        },
+        "max_queue_wait_seconds": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Max Queue Wait Seconds",
+          "type": "number"
+        }
+      },
+      "title": "ProtectionConfig",
+      "type": "object"
+    },
+    "RateLimitConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "pre_auth_enabled": {
+          "default": true,
+          "title": "Pre Auth Enabled",
+          "type": "boolean"
+        },
+        "pre_auth_requests": {
+          "default": 1200,
+          "minimum": 1,
+          "title": "Pre Auth Requests",
+          "type": "integer"
+        },
+        "pre_auth_window_seconds": {
+          "default": 60,
+          "minimum": 1,
+          "title": "Pre Auth Window Seconds",
+          "type": "integer"
+        },
+        "pre_auth_burst": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 300,
+          "title": "Pre Auth Burst"
+        },
+        "requests": {
+          "default": 120,
+          "minimum": 1,
+          "title": "Requests",
+          "type": "integer"
+        },
+        "window_seconds": {
+          "default": 60,
+          "minimum": 1,
+          "title": "Window Seconds",
+          "type": "integer"
+        },
+        "backend": {
+          "default": "memory",
+          "enum": [
+            "memory",
+            "redis"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "burst": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Burst"
+        },
+        "route_requests": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Requests"
+        },
+        "route_window_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Window Seconds"
+        },
+        "route_burst": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Burst"
+        },
+        "memory_max_buckets": {
+          "default": 50000,
+          "minimum": 100,
+          "title": "Memory Max Buckets",
+          "type": "integer"
+        },
+        "memory_idle_ttl_seconds": {
+          "default": 600,
+          "minimum": 10,
+          "title": "Memory Idle Ttl Seconds",
+          "type": "integer"
+        },
+        "memory_cleanup_interval_seconds": {
+          "default": 30,
+          "minimum": 1,
+          "title": "Memory Cleanup Interval Seconds",
+          "type": "integer"
+        },
+        "fail_open": {
+          "default": false,
+          "title": "Fail Open",
+          "type": "boolean"
+        }
+      },
+      "title": "RateLimitConfig",
+      "type": "object"
+    },
+    "RealtimeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "default": "memory",
+          "enum": [
+            "memory",
+            "redis"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "redis_prefix": {
+          "default": "forge:events",
+          "title": "Redis Prefix",
+          "type": "string"
+        }
+      },
+      "title": "RealtimeConfig",
+      "type": "object"
+    },
+    "RequestParameterSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "location": {
+          "default": "query",
+          "enum": [
+            "query",
+            "header",
+            "cookie",
+            "path"
+          ],
+          "title": "Location",
+          "type": "string"
+        },
+        "type": {
+          "default": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "enum": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enum"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "min_length": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Length"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Length"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pattern"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "RequestParameterSpec",
+      "type": "object"
+    },
+    "ResourceCacheConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enabled"
+        },
+        "ttl_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttl Seconds"
+        },
+        "list_ttl_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "List Ttl Seconds"
+        },
+        "read_ttl_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Read Ttl Seconds"
+        },
+        "stale_ttl_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stale Ttl Seconds"
+        }
+      },
+      "title": "ResourceCacheConfig",
+      "type": "object"
+    },
+    "ResourceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "database": {
+          "default": "primary",
+          "title": "Database",
+          "type": "string"
+        },
+        "table": {
+          "title": "Table",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "auto_create": {
+          "default": false,
+          "title": "Auto Create",
+          "type": "boolean"
+        },
+        "columns": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ColumnConfig"
+          },
+          "title": "Columns",
+          "type": "object"
+        },
+        "primary_key": {
+          "default": "id",
+          "title": "Primary Key",
+          "type": "string"
+        },
+        "allowed_actions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "permissions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "object"
+        },
+        "readable_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Readable Fields"
+        },
+        "writable_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Writable Fields"
+        },
+        "hidden_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Hidden Fields",
+          "type": "array"
+        },
+        "default_limit": {
+          "default": 50,
+          "minimum": 1,
+          "title": "Default Limit",
+          "type": "integer"
+        },
+        "max_limit": {
+          "default": 200,
+          "minimum": 1,
+          "title": "Max Limit",
+          "type": "integer"
+        },
+        "allowed_filters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Filters",
+          "type": "array"
+        },
+        "filter_operators": {
+          "items": {
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "like",
+              "ilike",
+              "isnull"
+            ],
+            "type": "string"
+          },
+          "title": "Filter Operators",
+          "type": "array"
+        },
+        "search_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Search Fields",
+          "type": "array"
+        },
+        "allowed_sort": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Sort",
+          "type": "array"
+        },
+        "pagination_mode": {
+          "default": "offset",
+          "enum": [
+            "offset",
+            "cursor"
+          ],
+          "title": "Pagination Mode",
+          "type": "string"
+        },
+        "cursor_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cursor Field"
+        },
+        "soft_delete_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Soft Delete Field"
+        },
+        "tenant_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tenant Field"
+        },
+        "owner_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Field"
+        },
+        "owner_actions": {
+          "items": {
+            "enum": [
+              "list",
+              "read",
+              "update",
+              "delete"
+            ],
+            "type": "string"
+          },
+          "title": "Owner Actions",
+          "type": "array"
+        },
+        "owner_bypass_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Bypass Permission"
+        },
+        "cache": {
+          "$ref": "#/$defs/ResourceCacheConfig"
+        },
+        "create_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Create Schema"
+        },
+        "update_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Update Schema"
+        },
+        "batch_enabled": {
+          "default": false,
+          "title": "Batch Enabled",
+          "type": "boolean"
+        },
+        "max_batch_size": {
+          "default": 100,
+          "maximum": 5000,
+          "minimum": 1,
+          "title": "Max Batch Size",
+          "type": "integer"
+        },
+        "count_enabled": {
+          "default": true,
+          "title": "Count Enabled",
+          "type": "boolean"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "table",
+        "path"
+      ],
+      "title": "ResourceConfig",
+      "type": "object"
+    },
+    "ResponseSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "default": "json",
+          "enum": [
+            "json",
+            "text",
+            "html",
+            "redirect",
+            "stream",
+            "file",
+            "empty"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "object"
+        },
+        "filename": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filename"
+        },
+        "status_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Code"
+        }
+      },
+      "title": "ResponseSpec",
+      "type": "object"
+    },
+    "RoleConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "inherits": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Inherits",
+          "type": "array"
+        }
+      },
+      "title": "RoleConfig",
+      "type": "object"
+    },
+    "SQLStatementConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "sql": {
+          "title": "Sql",
+          "type": "string"
+        },
+        "mode": {
+          "default": "execute",
+          "enum": [
+            "execute",
+            "fetch_one",
+            "fetch_all",
+            "scalar"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "result_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Name"
+        },
+        "max_rows": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Rows",
+          "type": "integer"
+        },
+        "require_rowcount_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Require Rowcount Min"
+        },
+        "require_rowcount_max": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Require Rowcount Max"
+        }
+      },
+      "required": [
+        "sql"
+      ],
+      "title": "SQLStatementConfig",
+      "type": "object"
+    },
+    "SecurityConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "api_key_header": {
+          "default": "X-API-Key",
+          "title": "Api Key Header",
+          "type": "string"
+        },
+        "bootstrap_enabled": {
+          "default": false,
+          "title": "Bootstrap Enabled",
+          "type": "boolean"
+        },
+        "bootstrap_admin_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bootstrap Admin Key"
+        },
+        "bootstrap_one_time": {
+          "default": true,
+          "title": "Bootstrap One Time",
+          "type": "boolean"
+        },
+        "jwt_enabled": {
+          "default": false,
+          "title": "Jwt Enabled",
+          "type": "boolean"
+        },
+        "jwt_provider": {
+          "default": "local_hs256",
+          "enum": [
+            "local_hs256",
+            "jwks"
+          ],
+          "title": "Jwt Provider",
+          "type": "string"
+        },
+        "jwt_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jwt Secret"
+        },
+        "jwt_exp_minutes": {
+          "default": 60,
+          "minimum": 1,
+          "title": "Jwt Exp Minutes",
+          "type": "integer"
+        },
+        "jwt_jwks_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jwt Jwks Url"
+        },
+        "jwt_issuer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jwt Issuer"
+        },
+        "jwt_audience": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jwt Audience"
+        },
+        "jwt_algorithms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Jwt Algorithms",
+          "type": "array"
+        },
+        "jwt_subject_claim": {
+          "default": "sub",
+          "title": "Jwt Subject Claim",
+          "type": "string"
+        },
+        "jwt_roles_claim": {
+          "default": "roles",
+          "title": "Jwt Roles Claim",
+          "type": "string"
+        },
+        "jwt_permissions_claim": {
+          "default": "permissions",
+          "title": "Jwt Permissions Claim",
+          "type": "string"
+        },
+        "jwt_tenant_claim": {
+          "default": "tenant_id",
+          "title": "Jwt Tenant Claim",
+          "type": "string"
+        },
+        "jwt_project_claim": {
+          "default": "project",
+          "title": "Jwt Project Claim",
+          "type": "string"
+        },
+        "jwt_require_project_claim": {
+          "default": true,
+          "title": "Jwt Require Project Claim",
+          "type": "boolean"
+        },
+        "jwt_trust_roles_claim": {
+          "default": false,
+          "title": "Jwt Trust Roles Claim",
+          "type": "boolean"
+        },
+        "jwt_trust_permissions_claim": {
+          "default": false,
+          "title": "Jwt Trust Permissions Claim",
+          "type": "boolean"
+        },
+        "jwt_trust_tenant_claim": {
+          "default": false,
+          "title": "Jwt Trust Tenant Claim",
+          "type": "boolean"
+        },
+        "jwks_cache_ttl_seconds": {
+          "default": 600,
+          "minimum": 30,
+          "title": "Jwks Cache Ttl Seconds",
+          "type": "integer"
+        },
+        "jwks_timeout_seconds": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "maximum": 30,
+          "title": "Jwks Timeout Seconds",
+          "type": "number"
+        },
+        "jwks_refresh_interval_seconds": {
+          "default": 5.0,
+          "maximum": 60,
+          "minimum": 0.1,
+          "title": "Jwks Refresh Interval Seconds",
+          "type": "number"
+        },
+        "jwks_max_response_bytes": {
+          "default": 1048576,
+          "maximum": 16777216,
+          "minimum": 4096,
+          "title": "Jwks Max Response Bytes",
+          "type": "integer"
+        },
+        "jwks_allow_private_networks": {
+          "default": false,
+          "title": "Jwks Allow Private Networks",
+          "type": "boolean"
+        },
+        "jwks_allow_insecure_http": {
+          "default": false,
+          "title": "Jwks Allow Insecure Http",
+          "type": "boolean"
+        },
+        "allow_query_api_key": {
+          "default": false,
+          "title": "Allow Query Api Key",
+          "type": "boolean"
+        },
+        "allow_websocket_query_api_key": {
+          "default": false,
+          "title": "Allow Websocket Query Api Key",
+          "type": "boolean"
+        },
+        "require_https": {
+          "default": false,
+          "title": "Require Https",
+          "type": "boolean"
+        },
+        "allowed_ips": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Ips",
+          "type": "array"
+        },
+        "denied_ips": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Denied Ips",
+          "type": "array"
+        },
+        "idempotency_header": {
+          "default": "Idempotency-Key",
+          "title": "Idempotency Header",
+          "type": "string"
+        },
+        "api_key_cache_ttl_seconds": {
+          "default": 2.0,
+          "maximum": 60.0,
+          "minimum": 0.0,
+          "title": "Api Key Cache Ttl Seconds",
+          "type": "number"
+        },
+        "api_key_cache_max_entries": {
+          "default": 10000,
+          "maximum": 1000000,
+          "minimum": 100,
+          "title": "Api Key Cache Max Entries",
+          "type": "integer"
+        }
+      },
+      "title": "SecurityConfig",
+      "type": "object"
+    },
+    "SocialPackConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "table_prefix": {
+          "default": "social_",
+          "title": "Table Prefix",
+          "type": "string"
+        },
+        "database": {
+          "default": "primary",
+          "title": "Database",
+          "type": "string"
+        },
+        "tenant_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tenant Field"
+        }
+      },
+      "title": "SocialPackConfig",
+      "type": "object"
+    },
+    "WebhookDocConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "method": {
+          "default": "POST",
+          "enum": [
+            "POST",
+            "PUT",
+            "PATCH"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "payload_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload Schema"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WebhookDocConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "slug": {
+      "title": "Slug",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "version": {
+      "default": "0.5.2",
+      "title": "Version",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "api_prefix": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Api Prefix"
+    },
+    "docs_enabled": {
+      "default": true,
+      "title": "Docs Enabled",
+      "type": "boolean"
+    },
+    "audit_enabled": {
+      "default": true,
+      "title": "Audit Enabled",
+      "type": "boolean"
+    },
+    "cors_origins": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Origins",
+      "type": "array"
+    },
+    "cors_methods": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Methods",
+      "type": "array"
+    },
+    "cors_headers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Headers",
+      "type": "array"
+    },
+    "cors_expose_headers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Expose Headers",
+      "type": "array"
+    },
+    "cors_allow_credentials": {
+      "default": false,
+      "title": "Cors Allow Credentials",
+      "type": "boolean"
+    },
+    "cors_max_age_seconds": {
+      "default": 600,
+      "maximum": 86400,
+      "minimum": 0,
+      "title": "Cors Max Age Seconds",
+      "type": "integer"
+    },
+    "databases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/DatabaseConfig"
+      },
+      "title": "Databases",
+      "type": "object"
+    },
+    "mongo_databases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/MongoDatabaseConfig"
+      },
+      "title": "Mongo Databases",
+      "type": "object"
+    },
+    "security": {
+      "$ref": "#/$defs/SecurityConfig"
+    },
+    "cache": {
+      "$ref": "#/$defs/CacheConfig"
+    },
+    "rate_limit": {
+      "$ref": "#/$defs/RateLimitConfig"
+    },
+    "protection": {
+      "$ref": "#/$defs/ProtectionConfig"
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilityConfig"
+    },
+    "realtime": {
+      "$ref": "#/$defs/RealtimeConfig"
+    },
+    "roles": {
+      "additionalProperties": {
+        "$ref": "#/$defs/RoleConfig"
+      },
+      "title": "Roles",
+      "type": "object"
+    },
+    "resources": {
+      "items": {
+        "$ref": "#/$defs/ResourceConfig"
+      },
+      "title": "Resources",
+      "type": "array"
+    },
+    "mongo_resources": {
+      "items": {
+        "$ref": "#/$defs/MongoResourceConfig"
+      },
+      "title": "Mongo Resources",
+      "type": "array"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/OperationConfig"
+      },
+      "title": "Operations",
+      "type": "array"
+    },
+    "data_sources": {
+      "items": {
+        "$ref": "#/$defs/DataSourceConfig"
+      },
+      "title": "Data Sources",
+      "type": "array"
+    },
+    "dependencies": {
+      "items": {
+        "$ref": "#/$defs/DependencySpec"
+      },
+      "title": "Dependencies",
+      "type": "array"
+    },
+    "custom_endpoints": {
+      "items": {
+        "$ref": "#/$defs/CustomEndpointConfig"
+      },
+      "title": "Custom Endpoints",
+      "type": "array"
+    },
+    "event_channels": {
+      "items": {
+        "$ref": "#/$defs/EventChannelConfig"
+      },
+      "title": "Event Channels",
+      "type": "array"
+    },
+    "webhook_docs": {
+      "items": {
+        "$ref": "#/$defs/WebhookDocConfig"
+      },
+      "title": "Webhook Docs",
+      "type": "array"
+    },
+    "media": {
+      "$ref": "#/$defs/MediaConfig"
+    },
+    "features": {
+      "$ref": "#/$defs/FeaturePacksConfig"
+    },
+    "project_dir": {
+      "default": "",
+      "title": "Project Dir",
+      "type": "string"
+    },
+    "$schema": {
+      "type": "string",
+      "description": "Optional editor-only JSON Schema reference. Ignored by the runtime."
+    }
+  },
+  "title": "JSON API Forge configuration fragment",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Partial project configuration. Files below app/NAME/config/*.json are merged alphabetically before strict typed validation."
+}

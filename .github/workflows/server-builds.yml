@@ -1,0 +1,269 @@
+name: Server and portable platform builds
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-builds-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Security and package preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify main branch ownership
+        run: |
+          test -d framework
+          test -d scripts
+          test ! -d editor
+          test ! -d json_api_forge
+          test ! -d example-apps
+          test ! -f .github/workflows/editor-build.yml
+          test ! -f .github/workflows/python-library.yml
+          test ! -f .github/workflows/example-apps.yml
+          test -z "$(git ls-files -s | awk '$1 == 120000 {print $4}')"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Validate source and the account control plane
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          ruff format --check framework scripts tests forge.py main.py passenger_wsgi.py
+          ruff check framework scripts tests forge.py main.py passenger_wsgi.py
+          pytest -q tests/test_v042_hardening_editor.py tests/test_v050_editor_collaboration.py tests/test_security.py
+          python scripts/check_manifest.py
+
+  standalone:
+    name: ${{ matrix.label }} standalone
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04, label: Linux glibc x64, target: linux-glibc-x64, python_arch: x64, archive: tar}
+          - {os: ubuntu-24.04-arm, label: Linux glibc ARM64, target: linux-glibc-arm64, python_arch: arm64, archive: tar}
+          - {os: windows-2025, label: Windows x64 / Server / ARM64 compatibility, target: windows-x64, python_arch: x64, archive: zip}
+          - {os: macos-15-intel, label: macOS x64, target: macos-x64, python_arch: x64, archive: tar}
+          - {os: macos-15, label: macOS ARM64, target: macos-arm64, python_arch: arm64, archive: tar}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          architecture: ${{ matrix.python_arch }}
+          cache: pip
+      - name: Build frozen command and server executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install . "pyinstaller>=6.12,<7"
+          python -m PyInstaller --clean --noconfirm --onefile --name forge --paths . --collect-submodules framework forge.py
+          python -m PyInstaller --clean --noconfirm --onefile --name forge-server --paths . --collect-submodules framework --collect-all uvicorn --collect-submodules sqlalchemy.dialects --hidden-import aiosqlite --hidden-import asyncpg --hidden-import asyncmy scripts/standalone_server.py
+          dist/forge --help
+          dist/forge-server --help
+      - name: Assemble Unix install tree
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p stage/bin stage/share/json-api-forge artifacts
+          install -m 0755 dist/forge stage/bin/forge
+          install -m 0755 dist/forge-server stage/bin/forge-server
+          cp -R schemas docs stage/share/json-api-forge/
+          cp README.md LICENSE LICENSE-FAQ.md NOTICE.md THIRD_PARTY_NOTICES.md TRADEMARK_POLICY.md AI_USAGE_POLICY.md LICENSE-HISTORY.md LICENSE-METADATA.json .env.example stage/share/json-api-forge/
+          archive="JSON-API-Forge-v0.5.2-${{ matrix.target }}.tar.gz"
+          tar -C stage -czf "artifacts/$archive" .
+          (cd artifacts && shasum -a 256 "$archive" > "$archive.sha256")
+      - name: Assemble Windows install tree
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force stage/bin,stage/share/json-api-forge,artifacts | Out-Null
+          Copy-Item dist/forge.exe,dist/forge-server.exe stage/bin/
+          Copy-Item schemas,docs -Destination stage/share/json-api-forge -Recurse
+          Copy-Item README.md,LICENSE,LICENSE-FAQ.md,NOTICE.md,THIRD_PARTY_NOTICES.md,TRADEMARK_POLICY.md,AI_USAGE_POLICY.md,LICENSE-HISTORY.md,LICENSE-METADATA.json,.env.example stage/share/json-api-forge/
+          $archive = "JSON-API-Forge-v0.5.2-${{ matrix.target }}.zip"
+          Compress-Archive -Path stage/* -DestinationPath "artifacts/$archive"
+          $hash = (Get-FileHash "artifacts/$archive" -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText(
+            "artifacts/$archive.sha256",
+            "$hash  $archive`n",
+            [Text.UTF8Encoding]::new($false)
+          )
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-v0.5.2-${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+
+  musl:
+    name: Linux musl ${{ matrix.arch }} standalone
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, arch: x64, platform: linux/amd64}
+          - {os: ubuntu-24.04-arm, arch: arm64, platform: linux/arm64}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build inside native Alpine container
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          docker run --rm --platform "${{ matrix.platform }}" -v "$PWD:/src" -w /src python:3.13-alpine sh -euxc '
+            apk add --no-cache build-base libffi-dev openssl-dev cargo tar
+            python -m pip install --upgrade pip
+            python -m pip install . "pyinstaller>=6.12,<7"
+            python -m PyInstaller --clean --noconfirm --onefile --name forge --paths . --collect-submodules framework forge.py
+            python -m PyInstaller --clean --noconfirm --onefile --name forge-server --paths . --collect-submodules framework --collect-all uvicorn --collect-submodules sqlalchemy.dialects --hidden-import aiosqlite --hidden-import asyncpg --hidden-import asyncmy scripts/standalone_server.py
+            dist/forge --help
+            dist/forge-server --help
+            mkdir -p stage/bin stage/share/json-api-forge artifacts
+            install -m 0755 dist/forge stage/bin/forge
+            install -m 0755 dist/forge-server stage/bin/forge-server
+            cp -R schemas docs stage/share/json-api-forge/
+            cp README.md LICENSE LICENSE-FAQ.md NOTICE.md THIRD_PARTY_NOTICES.md TRADEMARK_POLICY.md AI_USAGE_POLICY.md LICENSE-HISTORY.md LICENSE-METADATA.json .env.example stage/share/json-api-forge/
+            tar -C stage -czf artifacts/JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}.tar.gz .
+          '
+          (cd artifacts && sha256sum "JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}.tar.gz" > "JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}.tar.gz.sha256")
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+
+  hosting:
+    name: Wheel, source and cPanel/Passenger bundle
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Build universal distributions and cPanel package
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+          mkdir -p artifacts/cpanel
+          git archive --format=tar HEAD | tar -x -C artifacts/cpanel
+          cp dist/* artifacts/cpanel/
+          tar -C artifacts/cpanel -czf artifacts/JSON-API-Forge-v0.5.2-cpanel-passenger.tar.gz .
+          (cd artifacts && sha256sum JSON-API-Forge-v0.5.2-cpanel-passenger.tar.gz > JSON-API-Forge-v0.5.2-cpanel-passenger.tar.gz.sha256)
+          cp dist/* artifacts/
+          (cd artifacts && for archive in *.whl *.tar.gz; do sha256sum "$archive" > "$archive.sha256"; done)
+          (cd artifacts && sha256sum *.whl *.tar.gz > PYTHON-SHA256SUMS)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-v0.5.2-portable-hosting
+          path: |
+            artifacts/*.whl
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+            artifacts/PYTHON-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+  oci:
+    name: OCI Linux ${{ matrix.arch }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - {os: ubuntu-24.04, arch: x64, platform: linux/amd64}
+          - {os: ubuntu-24.04-arm, arch: arm64, platform: linux/arm64}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+      - name: Export OCI image without publishing it
+        run: |
+          mkdir artifacts
+          docker buildx build --platform "${{ matrix.platform }}" --output "type=oci,dest=artifacts/JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}.tar" .
+          (cd artifacts && sha256sum "JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}.tar" > "JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}.tar.sha256")
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+
+  bundle:
+    name: All-platform handoff bundle
+    needs: [standalone, musl, hosting, oci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: JSON-API-Forge-v0.5.2-*
+          path: downloads
+      - name: Verify checksums and build one upload-ready bundle
+        run: |
+          set -euo pipefail
+          find downloads -type f -name '*.sha256' -print0 | while IFS= read -r -d '' checksum; do
+            (cd "$(dirname "$checksum")" && sha256sum -c "$(basename "$checksum")")
+          done
+          find downloads -type f -name 'PYTHON-SHA256SUMS' -print0 | while IFS= read -r -d '' checksum; do
+            (cd "$(dirname "$checksum")" && sha256sum -c "$(basename "$checksum")")
+          done
+          test "$(find downloads -type f -name '*.zip' | wc -l)" -eq 1
+          test "$(find downloads -type f -name '*.tar.gz' | wc -l)" -eq 8
+          test "$(find downloads -type f -name '*.tar' | wc -l)" -eq 2
+          test "$(find downloads -type f -name '*.whl' | wc -l)" -eq 1
+          (cd downloads && find . -type f ! -name '*.sha256' ! -name 'SHA256SUMS' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          python - <<'PYPROOF'
+          import json, os
+          from pathlib import Path
+          Path("downloads/build.json").write_text(json.dumps({"sha": os.environ["GITHUB_SHA"], "run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "version": Path("VERSION").read_text().strip()}) + "\n")
+          PYPROOF
+          python scripts/validate_release_assets.py downloads verified --sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+          (cd downloads && zip -r ../JSON-API-Forge-v0.5.2-all-platforms.zip .)
+          sha256sum JSON-API-Forge-v0.5.2-all-platforms.zip > JSON-API-Forge-v0.5.2-all-platforms.zip.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-v0.5.2-all-platforms
+          path: |
+            JSON-API-Forge-v0.5.2-all-platforms.zip
+            JSON-API-Forge-v0.5.2-all-platforms.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

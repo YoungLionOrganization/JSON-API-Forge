@@ -1,0 +1,10 @@
+Options -Indexes
+PassengerEnabled on
+PassengerAppType wsgi
+PassengerStartupFile passenger_wsgi.py
+PassengerAppRoot /home/ACCOUNT/apps/json-api-forge
+PassengerPython /home/ACCOUNT/virtualenv/json-api-forge/3.13/bin/python
+
+<FilesMatch "^(\.env|MANIFEST\.sha256|pyproject\.toml|.*\.(db|sqlite|sqlite3))$">
+    Require all denied
+</FilesMatch>

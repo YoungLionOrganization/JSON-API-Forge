@@ -1,0 +1,125 @@
+JSON API Forge Source-Available Self-Host License
+Version 1.1 — 7 August 2026
+Short identifier: LicenseRef-JAF-SASH-1.1
+
+IMPORTANT: THIS IS A SOURCE-AVAILABLE LICENSE, NOT AN OSI-APPROVED OPEN-SOURCE LICENSE.
+
+Copyright (c) 2026 Cavanşir Qurbanzadə (@Cavanshirpro). All rights reserved except for the permissions expressly granted below.
+
+1. DEFINITIONS
+
+"Software" means the JSON API Forge source code, object code, documentation, schemas, examples, configuration, and other original project material distributed with this license, excluding Third-Party Components.
+
+"Licensor", "Project Owner", or "Owner" means Cavanşir Qurbanzadə (@Cavanshirpro), and any lawful successor or assignee to whom the relevant copyright, licensing, or project-control rights are transferred in writing.
+
+"Canonical Repository" means the official JSON API Forge repository currently designated at https://github.com/YoungLionOrganization/JSON-API-Forge, or a successor location expressly designated by the Licensor.
+
+"Official Release" means a version, archive, package, image, tag, or other distribution expressly published or authorized by the Licensor through the Canonical Repository or another official distribution channel designated by the Licensor.
+
+"Modified Version" means any work that modifies, adapts, translates, rearranges, extends, removes from, combines into a derivative work, or is otherwise based on any material part of the Software.
+
+"Distribute" means to provide, transmit, publish, upload, mirror, sublicense, sell, rent, lease, transfer, make available for download, or otherwise give any third party a copy of the Software or a Modified Version, in source or object form. Merely allowing users to interact with software running on a server, without receiving a copy of the Software, is not Distribution under this license.
+
+"Private Copy" means a copy kept under your control, or under the control of a hosting provider acting only on your behalf, and not made available to third parties as software.
+
+2. PERMITTED USE
+
+Subject to this license, the Licensor grants you a worldwide, non-exclusive, royalty-free, non-transferable license to:
+
+(a) view, inspect, study, audit, benchmark, and test the Software;
+
+(b) make Private Copies reasonably necessary for installation, backup, development, testing, security review, and disaster recovery;
+
+(c) install and run the Software on infrastructure you own, rent, lease, or otherwise control, including local machines, private networks, virtual private servers, cloud infrastructure, and hosting accounts;
+
+(d) use the Software for personal, educational, research, internal, non-commercial, or commercial purposes;
+
+(e) modify the Software and create Modified Versions solely for your own private or internal use; and
+
+(f) operate the Software or a privately modified version as a network service, API, website backend, application backend, game service, bot backend, or other hosted service, provided that users of the service do not receive a copy of the Software or Modified Version.
+
+3. NO REDISTRIBUTION OR ALTERNATIVE VERSIONS
+
+Except for Section 4, you may NOT, without prior written permission from the Licensor:
+
+(a) Distribute the Software, even if unmodified;
+
+(b) Distribute any Modified Version, fork, derivative, port, translation, rebrand, repackaging, or alternative build, whether source-available, open-source, proprietary, freeware, paid, or otherwise;
+
+(c) publish the Software or a Modified Version to a package registry, container registry, binary repository, download site, mirror, marketplace, application store, source archive, or similar distribution channel;
+
+(d) sell, sublicense, rent, lease, assign, transfer, or provide copies of the Software or a Modified Version to customers, clients, affiliates, contractors, or other third parties, except that a hosting provider may hold a Private Copy solely to operate infrastructure on your behalf;
+
+(e) incorporate a material part of the Software into another software product that you Distribute;
+
+(f) represent any unofficial build, fork, or modification as an Official Release; or
+
+(g) remove, obscure, or alter copyright, license, attribution, or source-availability notices included with the Software.
+
+You may link to the Canonical Repository or an Official Release so that another person can obtain the Software directly from the Licensor.
+
+4. CONTRIBUTION-FORK EXCEPTION
+
+If the Canonical Repository is hosted on a collaboration platform that technically requires or conventionally uses forks for pull requests, you may create and maintain a public platform fork solely for the purpose of proposing contributions back to the Canonical Repository, subject to all of the following conditions:
+
+(a) the fork retains this license and all notices;
+
+(b) it is clearly identified as an unofficial contribution fork;
+
+(c) you do not publish releases, packages, container images, installers, binaries, or other distributable artifacts from that fork;
+
+(d) you do not use the fork as a separately marketed, maintained, or deployed competing distribution; and
+
+(e) any contribution you submit is governed by CONTRIBUTOR_LICENSE_AGREEMENT.md when that file is present in the Canonical Repository.
+
+This narrow exception does not authorize general redistribution. Rights that a hosting platform independently requires under its terms of service remain governed by those platform terms and do not expand your rights outside that platform.
+
+5. OFFICIAL DISTRIBUTION AND CENTRAL PROJECT CONTROL
+
+Only the Licensor may designate an Official Release, publish an alternative official edition, authorize redistribution, or grant a separate commercial, OEM, redistribution, or derivative-work license.
+
+Nothing in this license obligates the Licensor to accept contributions, publish source code for future releases, maintain compatibility, provide support, or continue offering future versions under the same license.
+
+6. OWNERSHIP TRANSFER, SUCCESSION, AND FUTURE LICENSING
+
+The Licensor may assign or transfer the Licensor's copyright, licensing rights, contractual rights, trademarks, project-control rights, or other applicable rights in JSON API Forge to a company, foundation, successor, purchaser, or other legal entity, subject to applicable law and any required written instruments. A lawful successor or assignee may thereafter act as the Licensor to the extent of the rights transferred.
+
+Such a transfer does not cancel or retroactively reduce permissions already validly granted to recipients under the license attached to their copy. Existing copies remain governed by their applicable license unless the lawful Licensor separately grants different terms.
+
+The Licensor or a lawful successor may release future versions of JSON API Forge under this license, a revised source-available license, an OSI-approved open-source license, a commercial license, a dual-license model, or other terms.
+
+7. THIRD-PARTY COMPONENTS
+
+Third-Party Components are governed by their own licenses. This license does not reduce, replace, or expand rights granted by third-party licenses. Where a third-party license grants broader rights to a third-party component, those broader rights apply only to that component and not to the Licensor's original JSON API Forge code.
+
+8. CONTRIBUTIONS
+
+Unless the Licensor explicitly agrees otherwise in writing, contributions are accepted only under the project's then-current contributor terms, including CONTRIBUTOR_LICENSE_AGREEMENT.md when present. Submission of a contribution does not grant the contributor authority to publish an Official Release or an alternative distribution.
+
+9. TRADEMARKS AND BRANDING
+
+No trademark, trade name, logo, domain name, or branding rights are granted by this license. You may make truthful, nominative references to JSON API Forge to describe compatibility or use, but you may not imply sponsorship, endorsement, official status, or ownership by the Licensor.
+
+10. PATENTS
+
+To the extent the Licensor controls patent claims necessarily infringed by exercising the permissions expressly granted in Section 2, the Licensor grants you a limited patent license solely for those permitted activities. This patent license terminates if you initiate patent litigation alleging that the Software infringes a patent.
+
+11. TERMINATION
+
+Your rights under this license terminate automatically when you materially violate its terms. After termination you must stop exercising the licensed rights and remove unlawfully Distributed copies to the extent reasonably within your control. Reinstatement requires written permission from the Licensor unless applicable law requires otherwise.
+
+12. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY KIND, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, SECURITY, RELIABILITY, AVAILABILITY, OR ERROR-FREE OPERATION. YOU ARE RESPONSIBLE FOR REVIEWING, CONFIGURING, SECURING, BACKING UP, AND OPERATING YOUR DEPLOYMENT.
+
+13. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSOR AND CONTRIBUTORS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL DAMAGES, OR FOR LOSS OF PROFITS, REVENUE, DATA, GOODWILL, BUSINESS, OR SERVICE AVAILABILITY, ARISING FROM OR RELATED TO THE SOFTWARE OR THIS LICENSE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+14. SEVERABILITY AND NO WAIVER
+
+If any provision is held unenforceable, it will be interpreted or limited to the minimum extent necessary so that the remaining provisions remain effective. Failure to enforce a provision is not a waiver of that provision or any other provision.
+
+15. ENTIRE LICENSE
+
+This document states the permissions granted by the Licensor for the Software unless you have a separate written agreement with the Licensor. No additional rights are granted by implication, estoppel, or otherwise.

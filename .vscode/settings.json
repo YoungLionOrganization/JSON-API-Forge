@@ -1,0 +1,16 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["/app/*/app.json", "/app/*/manifest.json"],
+      "url": "./schemas/manifest.schema.json"
+    },
+    {
+      "fileMatch": ["/app/*/config/*.json"],
+      "url": "./schemas/fragment.schema.json"
+    },
+    {
+      "fileMatch": ["/app/*/graphs/*.forgegraph.json"],
+      "url": "./schemas/editor-graph.schema.json"
+    }
+  ]
+}

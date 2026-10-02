@@ -1,0 +1,7 @@
+{
+  "version": "0.5.2",
+  "tag": "v0.5.2",
+  "component": "server",
+  "required_workflows": ["ci.yml", "codeql.yml", "server-builds.yml"],
+  "artifact": "JSON-API-Forge-v0.5.2-all-platforms"
+}

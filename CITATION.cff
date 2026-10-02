@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you reference JSON API Forge in research, documentation, or technical writing, please cite the canonical project and author."
+title: "JSON API Forge"
+type: software
+authors:
+  - family-names: "Qurbanzadə"
+    given-names: "Cavanşir"
+    alias: "Cavanshirpro"
+version: "0.5.2"
+license: "LicenseRef-JAF-SASH-1.1"
+repository-code: "https://github.com/YoungLionOrganization/JSON-API-Forge"
+url: "https://github.com/YoungLionOrganization/JSON-API-Forge"
+keywords:
+  - FastAPI
+  - declarative backend
+  - API gateway
+  - self-hosted
+  - JSON configuration

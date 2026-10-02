@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:APP1_DATABASE_URL:-sqlite+aiosqlite:///./data/app1.db",
+      "pool_pre_ping": true,
+      "pool_size": 20,
+      "max_overflow": 40,
+      "pool_timeout": 10,
+      "pool_recycle": 1800
+    }
+  }
+}

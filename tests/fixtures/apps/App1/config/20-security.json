@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_admin_key": "$env:APP1_BOOTSTRAP_ADMIN_KEY",
+    "api_key_header": "X-API-Key",
+    "jwt_enabled": true,
+    "allow_query_api_key": false,
+    "require_https": false,
+    "bootstrap_enabled": true,
+    "jwt_secret": "$env:APP1_JWT_SECRET"
+  },
+  "roles": {
+    "admin": {"permissions": ["*"]},
+    "plugin": {"permissions": ["notes.list", "notes.read", "system.meta.read"]},
+    "media_uploader": {"permissions": ["media.upload", "media.read"]},
+    "social_client": {"permissions": ["social.profiles.list","social.profiles.read","social.profiles.create","social.profiles.update","social.profiles.delete","social.posts.read","social.posts.create","social.posts.update","social.posts.delete","social.comments.read","social.comments.create","social.comments.update","social.comments.delete","social.reactions.list","social.reactions.read","social.reactions.create","social.reactions.update","social.reactions.delete","social.follows.list","social.follows.read","social.follows.create","social.follows.update","social.follows.delete","social.notifications.list","social.notifications.read","social.notifications.update","media.read","media.upload"]},
+    "game_client": {"permissions": ["gaming.players.list","gaming.players.read","gaming.players.create","gaming.players.update","gaming.leaderboard.list","gaming.leaderboard.read","system.meta.read"]},
+    "economy_bot": {"permissions": ["system.meta.read","economy.balance.read","economy.transfer","economy.accounts.read","economy.ledger.read"]},
+    "economy_admin": {"permissions": ["economy.*","admin.keys.list","system.meta.read"]},
+    "content_plugin": {"permissions": ["content.catalog"]},
+    "realtime_client": {"permissions": ["events.notifications.subscribe","events.notifications.publish"]}
+  }
+}

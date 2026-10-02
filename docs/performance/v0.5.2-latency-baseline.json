@@ -1,0 +1,225 @@
+{
+  "python": "3.12.14",
+  "source_root": "/tmp/forge-latency-before",
+  "framework_import_ms": 531.762,
+  "controlled_runs": [
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 37.014,
+        "asgi_completion_ms": 193.179,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 91.981,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.934,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.735,
+      "file_executor_wait_after_dns_ms": 114.98
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.325,
+        "asgi_completion_ms": 182.147,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 86.131,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.997,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.653,
+      "file_executor_wait_after_dns_ms": 115.125
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.119,
+        "asgi_completion_ms": 181.922,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 92.328,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.747,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.655,
+      "file_executor_wait_after_dns_ms": 114.973
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 27.377,
+        "asgi_completion_ms": 184.18,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 86.025,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.978,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 6.147,
+      "file_executor_wait_after_dns_ms": 114.593
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.02,
+        "asgi_completion_ms": 181.769,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 86.12,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 812.1,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.658,
+      "file_executor_wait_after_dns_ms": 115.026
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.11,
+        "asgi_completion_ms": 181.898,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 86.33,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.722,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.657,
+      "file_executor_wait_after_dns_ms": 115.03
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.14,
+        "asgi_completion_ms": 181.914,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 91.398,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.842,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.904,
+      "file_executor_wait_after_dns_ms": 114.724
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.363,
+        "asgi_completion_ms": 182.175,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 84.51,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.767,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.772,
+      "file_executor_wait_after_dns_ms": 115.065
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.32,
+        "asgi_completion_ms": 182.098,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 93.312,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.956,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.816,
+      "file_executor_wait_after_dns_ms": 115.354
+    },
+    {
+      "request_deadline": {
+        "configured_ms": 25,
+        "response_start_ms": 26.172,
+        "asgi_completion_ms": 182.007,
+        "status": 504,
+        "completed": true,
+        "cancelled": false
+      },
+      "ten_static_managers_ms": 89.131,
+      "datasource_retry": {
+        "phase_timeout_ms": 20,
+        "requested_total_budget_ms": 30,
+        "source_supports_total_budget": false,
+        "elapsed_ms": 811.985,
+        "attempts": 3
+      },
+      "dns_caller_timeout_ms": 5.637,
+      "file_executor_wait_after_dns_ms": 115.081
+    }
+  ],
+  "passenger_10_project_first_request": {
+    "samples": 10,
+    "p50_ms": 143.011,
+    "p95_ms": 178.578,
+    "p99_ms": 178.578,
+    "min_ms": 118.011,
+    "max_ms": 178.578
+  },
+  "passenger_warm_request": {
+    "samples": 300,
+    "p50_ms": 1.183,
+    "p95_ms": 1.752,
+    "p99_ms": 2.578,
+    "min_ms": 0.847,
+    "max_ms": 99.261
+  },
+  "limits": "Local SQLite, in-process WSGI; no hosting spawn, TLS, real DNS or remote database latency. Percentiles use nearest rank.",
+  "comparison_revision": "7c647c7 (initial v0.5.2 implementation)"
+}

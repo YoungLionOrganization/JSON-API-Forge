@@ -1,0 +1,224 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify main branch ownership
+        run: |
+          test -d framework
+          test -d clients/typescript
+          test ! -e clients/python
+          test ! -d editor
+          test ! -d json_api_forge
+          test ! -d example-apps
+          test ! -f .github/workflows/editor-build.yml
+          test ! -f .github/workflows/python-library.yml
+          test ! -f .github/workflows/example-apps.yml
+          test -z "$(git ls-files -s | awk '$1 == 120000 {print $4}')"
+      - name: Require immutable GitHub Action references
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+
+          unpinned = []
+          for workflow in pathlib.Path(".github/workflows").glob("*.yml"):
+              for number, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), 1):
+                  match = re.search(r"\buses:\s*[^@\s]+@([^\s#]+)", line)
+                  if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
+                      unpinned.append(f"{workflow}:{number}: {match.group(1)}")
+          if unpinned:
+              raise SystemExit(f"workflow actions must use immutable commit SHAs: {unpinned}")
+          PY
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Lint and format contract
+        if: matrix.python-version == '3.13'
+        run: |
+          ruff format --check framework tests scripts forge.py main.py run.py passenger_wsgi.py
+          ruff check framework tests scripts forge.py main.py run.py passenger_wsgi.py
+      - name: Audit Python dependencies and security-sensitive source
+        if: matrix.python-version == '3.13'
+        run: |
+          python -m pip install "bandit>=1.9,<2" "pip-audit>=2.10,<3"
+          bandit -q -ll -r framework forge.py main.py run.py passenger_wsgi.py
+          pip-audit --local --skip-editable
+      - name: Verify release manifest
+        run: python scripts/check_manifest.py
+      - name: Validate declarative configuration
+        run: |
+          forge schema
+          git diff --exit-code -- schemas
+          validation_root=$(mktemp -d)
+          cd "$validation_root"
+          forge new CIProject --slug ci-project
+          forge validate
+          forge doctor
+          forge init --production
+          forge doctor --production
+      - name: Compile Python sources
+        run: python -m compileall -q framework tests scripts forge.py main.py run.py passenger_wsgi.py
+      - name: Verify installed dependency graph
+        run: python -m pip check
+      - name: Test with branch coverage
+        run: |
+          pytest --cov=framework --cov-report=term-missing --cov-report=xml --cov-report=json:coverage.json -q
+          python scripts/check_critical_coverage.py coverage.json
+
+  package:
+    name: Build and isolated-install package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Build source and wheel artifacts
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Test the wheel outside the checkout
+        run: |
+          python -m venv "${{ runner.temp }}/forge-wheel"
+          "${{ runner.temp }}/forge-wheel/bin/python" -m pip install dist/*.whl
+          mkdir "${{ runner.temp }}/wheel-smoke"
+          cd "${{ runner.temp }}/wheel-smoke"
+          "${{ runner.temp }}/forge-wheel/bin/forge" --help
+          "${{ runner.temp }}/forge-wheel/bin/forge" new WheelProject --slug wheel-project
+          "${{ runner.temp }}/forge-wheel/bin/forge" init
+          "${{ runner.temp }}/forge-wheel/bin/forge" validate
+          "${{ runner.temp }}/forge-wheel/bin/forge" schema
+          test -f schemas/manifest.schema.json
+          "${{ runner.temp }}/forge-wheel/bin/python" -c "from framework import config; print(config.ForgeConfig.model_fields['version'].default)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: json-api-forge-v0.5.2-python
+          path: dist/*
+          if-no-files-found: error
+
+  integration:
+    name: PostgreSQL + Redis + MongoDB integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: forge
+          POSTGRES_PASSWORD: forge
+          POSTGRES_DB: forge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U forge -d forge_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mongo:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 20
+    env:
+      TEST_POSTGRES_URL: postgresql://forge:forge@127.0.0.1:5432/forge_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      TEST_MONGO_URL: mongodb://127.0.0.1:27017/forge_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install package and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Live service and framework tests
+        run: pytest -q
+
+  typescript:
+    name: TypeScript client
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+      - name: Install locked client dependencies without lifecycle scripts
+        run: npm ci --prefix clients/typescript --ignore-scripts --no-audit --no-fund
+      - name: Type-check client
+        run: npm run --prefix clients/typescript typecheck
+      - name: Test client security boundaries
+        run: npm run --prefix clients/typescript test
+
+  container-build:
+    name: Container build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build Docker image
+        run: docker build --tag json-api-forge:ci .
+
+  release-gate:
+    name: Release gate
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [unit, integration, package, typescript, container-build]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "All Python, package, live-service, TypeScript, and container checks passed for ${{ github.ref_name }}."

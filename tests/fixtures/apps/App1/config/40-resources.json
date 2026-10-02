@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "resources": [
+    {
+      "database": "primary",
+      "table": "notes",
+      "path": "notes",
+      "auto_create": true,
+      "columns": {
+        "id": {"type":"integer","primary_key":true,"nullable":false},
+        "title": {"type":"string","nullable":false,"max_length":200,"index":true},
+        "content": {"type":"text"},
+        "priority": {"type":"integer","nullable":false,"default":0,"index":true},
+        "metadata": {"type":"json"},
+        "created_at": {"type":"datetime"},
+        "deleted_at": {"type":"datetime"}
+      },
+      "writable_fields": ["title","content","priority","metadata","created_at"],
+      "allowed_filters": ["title","priority"],
+      "allowed_sort": ["id","title","priority","created_at"],
+      "soft_delete_field": "deleted_at",
+      "cache": {"enabled":true,"list_ttl_seconds":15,"read_ttl_seconds":60}
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../../../schemas/fragment.schema.json",
+  "data_sources": [
+    {"name":"catalog-file","path":"content/catalog","type":"json_file","file":"data/catalog.json","permission":"content.catalog","writable":true,"id_field":"id","cache_ttl_seconds":15}
+  ],
+  "event_channels": [
+    {"name":"notifications","path":"events/notifications","publish_permission":"events.notifications.publish","subscribe_permission":"events.notifications.subscribe","websocket_enabled":true,"sse_enabled":true,"queue_size":256,"heartbeat_seconds":15}
+  ],
+  "webhook_docs": [
+    {
+      "name":"economy-transaction-created","method":"POST","summary":"Payload shape emitted to a configured external consumer after an economy transaction",
+      "payload_schema":{"type":"object","required":["transaction_id","amount"],"properties":{"transaction_id":{"type":"integer"},"amount":{"type":"integer"}}}
+    }
+  ]
+}

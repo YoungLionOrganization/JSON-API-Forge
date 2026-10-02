@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json-api-forge.dev/schemas/editor-graph.schema.json",
+  "title": "JSON API Forge Editor Graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "target_document", "nodes", "edges"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": 1},
+    "target_document": {
+      "type": "string",
+      "pattern": "^config/[A-Za-z0-9][A-Za-z0-9._-]{0,95}\\.json$"
+    },
+    "metadata": {"type": "object"},
+    "nodes": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "x", "y", "properties"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$"},
+          "type": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,7}$"},
+          "title": {"type": "string", "maxLength": 160},
+          "x": {"type": "number", "minimum": -1000000, "maximum": 1000000},
+          "y": {"type": "number", "minimum": -1000000, "maximum": 1000000},
+          "properties": {"type": "object"}
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "from_node", "from_port", "to_node", "to_port"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$"},
+          "from_node": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$"},
+          "from_port": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$"},
+          "to_node": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$"},
+          "to_port": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$"}
+        }
+      }
+    }
+  }
+}
