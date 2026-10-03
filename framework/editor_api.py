@@ -789,12 +789,27 @@ def register_editor_api(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.get("/capabilities")
-    async def capabilities(request: Request):
-        access = await access_for(request, "projects.read")
+    async def capabilities(request: Request, project: str = "*"):
+        principal = await principal_for(request)
+        if principal.legacy:
+            access = EditorAccess(principal, frozenset({"*"}), frozenset(), frozenset({"Founder"}), 1000, ("*",), (), ("*",))
+            global_access = access
+        else:
+            store = store_for(request)
+            access = await store.access(principal, project)
+            global_access = await store.access(principal)
+        if project != "*" and not access.permits("projects.read"):
+            raise HTTPException(status_code=403, detail="Missing Editor permission: projects.read")
+        permissions = {permission for permission in EDITOR_PERMISSIONS if access.permits(permission)}
+        # Account administration is server-wide even while viewing a project.
+        for permission in ("projects.create", "members.read", "members.manage", "roles.read", "roles.manage", "invitations.manage"):
+            if not global_access.permits(permission):
+                permissions.discard(permission)
         return {
             "api_version": 2,
-            "read_only": settings.editor_read_only,
-            "allow_create_projects": settings.editor_allow_create_projects and access.permits("projects.create"),
+            "read_only": settings.editor_read_only or not access.permits("documents.write"),
+            "project": project,
+            "allow_create_projects": settings.editor_allow_create_projects and global_access.permits("projects.create"),
             "allow_hooks": settings.editor_allow_hooks and access.permits("documents.hooks.write"),
             "allow_graphs": settings.editor_allow_graphs and access.permits("documents.graphs.write"),
             "database_browser": settings.editor_database_browser_enabled and access.permits("databases.metadata.read"),
@@ -806,15 +821,15 @@ def register_editor_api(
             "authentication": "Bearer session",
             "optimistic_concurrency": "sha256",
             "cross_process_locking": True,
-            "permissions": sorted(access.permissions),
-            "permission_catalog": sorted(EDITOR_PERMISSIONS) if access.permits("roles.manage") else [],
+            "permissions": sorted(permissions),
+            "permission_catalog": sorted(EDITOR_PERMISSIONS) if global_access.permits("roles.manage") else [],
             "roles": sorted(access.role_names),
             "rank": access.rank,
         }
 
     @router.get("/me")
-    async def me(request: Request):
-        access = await access_for(request, "profiles.read")
+    async def me(request: Request, project: str = "*"):
+        access = await access_for(request, "profiles.read", project)
         if access.principal.legacy:
             return {
                 "id": access.principal.user_id,
@@ -826,8 +841,8 @@ def register_editor_api(
         return await store_for(request).profile(access.principal.user_id)
 
     @router.patch("/me")
-    async def update_me(payload: ProfileUpdate, request: Request):
-        access = await access_for(request, "profiles.write.own")
+    async def update_me(payload: ProfileUpdate, request: Request, project: str = "*"):
+        access = await access_for(request, "profiles.write.own", project)
         profile = await store_for(request).update_profile(access.principal, payload.model_dump(exclude_none=True))
         await store_for(request).audit(
             access.principal, "profile.update", project=None, target=access.principal.user_id, request_id=request_id(request)

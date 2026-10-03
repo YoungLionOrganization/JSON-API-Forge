@@ -2,6 +2,8 @@
 
 ## v0.5.2 (in development)
 
+Editor capabilities and profile requests now accept an optional project scope. Authenticated project-only members can discover projects before selecting one, then load their effective project permissions without inheriting server-wide account administration privileges. Regression coverage checks allowed and denied scopes.
+
 Cache policy isolation, atomic heterogeneous batches, ISO datetimes and nullable cursors, media cleanup and signed-token validation, non-finite parameter rejection, portable BIGINT declarations, bounded DNS/JWKS/readiness waits, app-scoped JWKS clients, reflected-table reuse and stage latency metrics. Manual server validate/draft/publish workflow verifies exact commit/run-attempt provenance, latest CI/CodeQL/platform gates, complete checksums and remote digests. Latency follow-up cancels the actual ASGI endpoint before reusing admission slots, isolates timed-out DNS work from file/hook executors, lazily creates HTTP clients, limits auto-create checks to the current table and adds optional HTTP source total deadlines. See `release/notes/v0.5.2.md` for compatibility details and `docs/performance/v0.5.2-latency-analysis.md` for measured results and remaining limits.
 
 

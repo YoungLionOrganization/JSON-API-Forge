@@ -143,6 +143,22 @@ def test_account_bootstrap_roles_invitations_and_project_scopes(tmp_path: Path) 
         )
         assert worker.status_code == 201, worker.text
         worker_headers = {"Authorization": f"Bearer {worker.json()['access_token']}"}
+        bootstrap = client.get("/__forge/editor/v1/capabilities", headers=worker_headers)
+        assert bootstrap.status_code == 200
+        assert bootstrap.json()["permissions"] == []
+        assert bootstrap.json()["read_only"] is True
+        scoped = client.get("/__forge/editor/v1/capabilities?project=Notes", headers=worker_headers)
+        assert scoped.status_code == 200
+        assert scoped.json()["collaboration"] and "messages.write" in scoped.json()["permissions"]
+        assert "roles.read" not in scoped.json()["permissions"]
+        assert scoped.json()["allow_create_projects"] is False
+        assert client.get("/__forge/editor/v1/capabilities?project=Other", headers=worker_headers).status_code == 403
+        assert client.get("/__forge/editor/v1/me?project=Notes", headers=worker_headers).json()["username"] == "worker.one"
+        assert client.get("/__forge/editor/v1/me?project=Other", headers=worker_headers).status_code == 403
+        assert (
+            client.patch("/__forge/editor/v1/me?project=Notes", headers=worker_headers, json={"status": "Ready"}).json()["status"]
+            == "Ready"
+        )
         assert client.get("/__forge/editor/v1/roles", headers=worker_headers).status_code == 403
         assert [item["directory"] for item in client.get("/__forge/editor/v1/projects", headers=worker_headers).json()["projects"]] == [
             "Notes"
