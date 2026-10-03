@@ -40,9 +40,9 @@ public:
                       const QString &displayName);
     void fetchSetupStatus(const QString &operation = QStringLiteral("setup-status"));
     void logout();
-    void fetchCapabilities();
-    void fetchProfile();
-    void updateProfile(const QJsonObject &values);
+    void fetchCapabilities(const QString &project = {});
+    void fetchProfile(const QString &project = {});
+    void updateProfile(const QJsonObject &values, const QString &project = {});
     void fetchProjects();
     void createProject(const QString &directoryName, const QString &slug);
     void fetchDocuments(const QString &project);
@@ -69,7 +69,7 @@ public:
     void downloadAttachment(const QString &attachmentId, const QString &targetPath, qsizetype maxBytes);
     void fetchNotes(const QString &project);
     void createNote(const QString &project, const QString &areaId, const QString &title, const QString &body,
-                    const QString &visibility);
+                    const QString &visibility, int minimumRank = 0);
     void fetchDatabases(const QString &project);
     void fetchDatabaseRows(const QString &project, const QString &alias, const QString &table, int limit = 100,
                            int offset = 0);

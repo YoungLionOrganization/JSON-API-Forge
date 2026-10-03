@@ -3,6 +3,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QWidget>
+#include <QHash>
+#include <QSet>
 
 class ApiClient;
 class QComboBox;
@@ -12,6 +14,9 @@ class QListWidget;
 class QTableWidget;
 class QTextEdit;
 class QTimer;
+class QSpinBox;
+class QTabWidget;
+class QPushButton;
 class QTreeWidget;
 class QUrl;
 
@@ -53,6 +58,11 @@ private:
     void buildAuditTab(QWidget *tab);
     void openCall(const QUrl &url);
     [[nodiscard]] QString currentAreaId() const;
+    [[nodiscard]] QString projectScope() const;
+    [[nodiscard]] bool permits(const QString &permission) const;
+    void updateActions();
+    void refreshProject();
+    void requestMessages();
 
     ApiClient *m_api = nullptr;
     QLabel *m_profile = nullptr;
@@ -69,8 +79,28 @@ private:
     QLineEdit *m_noteTitle = nullptr;
     QTextEdit *m_noteBody = nullptr;
     QComboBox *m_noteVisibility = nullptr;
+    QSpinBox *m_noteMinimumRank = nullptr;
+    QLabel *m_noteRankLabel = nullptr;
     QTreeWidget *m_audit = nullptr;
     QTimer *m_poll = nullptr;
+    QTabWidget *m_tabs = nullptr;
+    QLabel *m_spaceStatus = nullptr;
+    QLabel *m_feedback = nullptr;
+    QPushButton *m_sendButton = nullptr;
+    QPushButton *m_noteSaveButton = nullptr;
+    QSet<QString> m_permissions;
+    QHash<QString, QString> m_messageDrafts;
+    QString m_selectedArea;
+    QString m_pendingMessageArea;
+    QString m_pendingMessageBody;
+    QString m_messagesLoading;
+    QString m_messagesRefreshNeeded;
+    QString m_pendingNoteProject;
+    QString m_pendingNoteTitle;
+    QString m_pendingNoteBody;
+    QString m_pendingNoteVisibility;
+    int m_pendingNoteRank = 0;
+    QString m_selectedRowsOperation;
     QString m_project;
     QJsonObject m_profileRecord;
     QJsonArray m_memberRecords;

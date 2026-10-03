@@ -385,7 +385,7 @@ void ApiClient::cancelActiveRequests()
     const auto replies = m_network.findChildren<QNetworkReply *>(QString(),
                                                                  Qt::FindDirectChildrenOnly);
     for (auto *reply : replies) {
-        if (reply != nullptr && reply->isRunning()) {
+        if (reply != nullptr && reply->isRunning() && !reply->property("forgeLogout").toBool()) {
             reply->setProperty("forgeUserCanceled", true);
             reply->abort();
         }
@@ -517,6 +517,7 @@ void ApiClient::send(const QString &operation, QNetworkAccessManager::Operation 
         fail(operation, 0, QStringLiteral("Unsupported editor HTTP operation."));
         return;
     }
+    reply->setProperty("forgeLogout", operation == QStringLiteral("auth-logout"));
     auto *deadline = new QTimer(reply);
     deadline->setSingleShot(true);
     connect(deadline, &QTimer::timeout, reply, [reply] {
@@ -609,7 +610,7 @@ void ApiClient::trackJsonReply(QNetworkReply *reply, const QString &operation,
                          QStringLiteral("security"),
                          QStringLiteral("A redirect response was rejected before credentials could be forwarded."));
                 } else if (reply->error() != QNetworkReply::NoError || statusCode >= 400) {
-                    if (authenticationRequired && statusCode == 401) {
+                    if (authenticationRequired && statusCode == 401 && operation != QStringLiteral("auth-logout")) {
                         clearSession();
                     }
                     QString category = QStringLiteral("network");
@@ -754,26 +755,33 @@ void ApiClient::fetchSetupStatus(const QString &operation)
 
 void ApiClient::logout()
 {
+    cancelActiveRequests();
     send(QStringLiteral("auth-logout"), QNetworkAccessManager::PostOperation,
          {QStringLiteral("auth"), QStringLiteral("logout")});
     clearSession();
 }
 
-void ApiClient::fetchCapabilities()
+void ApiClient::fetchCapabilities(const QString &project)
 {
-    send(QStringLiteral("capabilities"), QNetworkAccessManager::GetOperation,
-         {QStringLiteral("capabilities")});
+    QUrlQuery query;
+    if (!project.isEmpty()) { query.addQueryItem(QStringLiteral("project"), project); }
+    send(project.isEmpty() ? QStringLiteral("capabilities") : QStringLiteral("capabilities:%1").arg(project),
+         QNetworkAccessManager::GetOperation, {QStringLiteral("capabilities")}, {}, query);
 }
 
-void ApiClient::fetchProfile()
+void ApiClient::fetchProfile(const QString &project)
 {
-    send(QStringLiteral("team-me"), QNetworkAccessManager::GetOperation, {QStringLiteral("me")});
+    QUrlQuery query;
+    if (!project.isEmpty()) { query.addQueryItem(QStringLiteral("project"), project); }
+    send(QStringLiteral("team-me"), QNetworkAccessManager::GetOperation, {QStringLiteral("me")}, {}, query);
 }
 
-void ApiClient::updateProfile(const QJsonObject &values)
+void ApiClient::updateProfile(const QJsonObject &values, const QString &project)
 {
+    QUrlQuery query;
+    if (!project.isEmpty()) { query.addQueryItem(QStringLiteral("project"), project); }
     send(QStringLiteral("team-profile-update"), QNetworkAccessManager::CustomOperation,
-         {QStringLiteral("me")}, values);
+         {QStringLiteral("me")}, values, query);
 }
 
 void ApiClient::fetchProjects()
@@ -880,14 +888,14 @@ void ApiClient::fetchAreas(const QString &project)
 {
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("project"), project);
-    send(QStringLiteral("team-areas"), QNetworkAccessManager::GetOperation, {QStringLiteral("areas")}, {},
+    send(QStringLiteral("team-areas:%1").arg(project), QNetworkAccessManager::GetOperation, {QStringLiteral("areas")}, {},
          query);
 }
 
 void ApiClient::createArea(const QString &project, const QString &name, const QString &description,
                            const QString &visibility, int minimumRank)
 {
-    send(QStringLiteral("team-area-create"), QNetworkAccessManager::PostOperation,
+    send(QStringLiteral("team-area-create:%1").arg(project), QNetworkAccessManager::PostOperation,
          {QStringLiteral("areas")},
          QJsonObject{{QStringLiteral("project"), project},
                      {QStringLiteral("name"), name},
@@ -923,7 +931,7 @@ void ApiClient::fetchAttachments(const QString &areaId)
 void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath, qsizetype maxBytes)
 {
     if (!isConfigured()) {
-        fail(QStringLiteral("team-attachment-upload"), 0,
+        fail(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0,
              QStringLiteral("Connect and sign in to a Forge server first."),
              QStringLiteral("authentication"));
         return;
@@ -933,7 +941,7 @@ void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath,
     if (!info.exists() || !info.isFile() || info.isSymLink() || name.isEmpty()
         || name.size() > 255 || name.contains(u'\r') || name.contains(u'\n') || name.contains(u'"')
         || name.contains(u';') || name.contains(QChar::Null)) {
-        fail(QStringLiteral("team-attachment-upload"), 0,
+        fail(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0,
              QStringLiteral("The selected file is unsafe or exceeds the server attachment limit."),
              QStringLiteral("validation"));
         return;
@@ -941,7 +949,7 @@ void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath,
     QByteArray snapshot;
     QString snapshotError;
     if (!safeAttachmentSnapshot(info.absoluteFilePath(), maxBytes, &snapshot, &snapshotError)) {
-        fail(QStringLiteral("team-attachment-upload"), 0, snapshotError,
+        fail(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0, snapshotError,
              QStringLiteral("validation"));
         return;
     }
@@ -969,7 +977,7 @@ void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath,
     });
     reply->setProperty("forgeTimeoutMs", m_uploadTimeoutMs);
     deadline->start(m_uploadTimeoutMs);
-    trackJsonReply(reply, QStringLiteral("team-attachment-upload"), true, true, 0);
+    trackJsonReply(reply, QStringLiteral("team-attachment-upload:%1").arg(areaId), true, true, 0);
 }
 
 void ApiClient::downloadAttachment(const QString &attachmentId, const QString &targetPath,
@@ -1076,14 +1084,14 @@ void ApiClient::fetchNotes(const QString &project)
 {
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("project"), project);
-    send(QStringLiteral("team-notes"), QNetworkAccessManager::GetOperation, {QStringLiteral("notes")}, {},
+    send(QStringLiteral("team-notes:%1").arg(project), QNetworkAccessManager::GetOperation, {QStringLiteral("notes")}, {},
          query);
 }
 
 void ApiClient::createNote(const QString &project, const QString &areaId, const QString &title,
-                           const QString &body, const QString &visibility)
+                           const QString &body, const QString &visibility, int minimumRank)
 {
-    send(QStringLiteral("team-note-create"), QNetworkAccessManager::PostOperation,
+    send(QStringLiteral("team-note-create:%1").arg(project), QNetworkAccessManager::PostOperation,
          {QStringLiteral("notes")},
          QJsonObject{{QStringLiteral("project"), project},
                      {QStringLiteral("area_id"), areaId.isEmpty() ? QJsonValue(QJsonValue::Null)
@@ -1091,7 +1099,7 @@ void ApiClient::createNote(const QString &project, const QString &areaId, const 
                      {QStringLiteral("title"), title},
                      {QStringLiteral("body"), body},
                      {QStringLiteral("visibility"), visibility},
-                     {QStringLiteral("minimum_rank"), 0},
+                     {QStringLiteral("minimum_rank"), minimumRank},
                      {QStringLiteral("allowed_role_ids"), QJsonArray{}}});
 }
 
@@ -1116,7 +1124,7 @@ void ApiClient::fetchDatabaseRows(const QString &project, const QString &alias, 
 
 void ApiClient::startCall(const QString &areaId, const QString &mode)
 {
-    send(QStringLiteral("team-call"), QNetworkAccessManager::PostOperation,
+    send(QStringLiteral("team-call:%1").arg(areaId), QNetworkAccessManager::PostOperation,
          {QStringLiteral("calls")},
          QJsonObject{{QStringLiteral("area_id"), areaId}, {QStringLiteral("mode"), mode}});
 }
@@ -1134,7 +1142,7 @@ void ApiClient::fetchAudit(const QString &project)
     if (!project.isEmpty()) {
         query.addQueryItem(QStringLiteral("project"), project);
     }
-    send(QStringLiteral("team-audit"), QNetworkAccessManager::GetOperation, {QStringLiteral("audit")}, {},
+    send(QStringLiteral("team-audit:%1").arg(project), QNetworkAccessManager::GetOperation, {QStringLiteral("audit")}, {},
          query);
 }
 

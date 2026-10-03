@@ -47,6 +47,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStandardPaths>
@@ -56,6 +57,7 @@
 #include <QResizeEvent>
 #include <QScreen>
 #include <QScopedValueRollback>
+#include <QScrollArea>
 #include <QSizePolicy>
 #include <QTextStream>
 #include <QTimer>
@@ -106,6 +108,7 @@ MainWindow::MainWindow(QWidget *parent, bool restoreLayout)
         restoreWindowLayout();
     }
     showWelcome();
+    updateConnectionActions();
 
     m_userPluginDirectory = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
                                 .filePath(QStringLiteral("plugins"));
@@ -167,16 +170,23 @@ void MainWindow::showTeamPreview()
 void MainWindow::buildInterface()
 {
     auto *root = new QSplitter(this);
+    m_rootSplitter = root;
     root->setObjectName(QStringLiteral("rootSplitter"));
     root->setHandleWidth(1);
     root->setChildrenCollapsible(false);
     setCentralWidget(root);
 
-    m_sidebar = new QWidget(root);
+    auto *sidebarScroll = new QScrollArea(root);
+    sidebarScroll->setWidgetResizable(true);
+    sidebarScroll->setFrameShape(QFrame::NoFrame);
+    m_sidebar = sidebarScroll;
+    auto *sidebarContents = new QWidget(sidebarScroll);
+    sidebarContents->setObjectName(QStringLiteral("sidebarContents"));
+    sidebarScroll->setWidget(sidebarContents);
     m_sidebar->setObjectName(QStringLiteral("sidebar"));
     m_sidebar->setMinimumWidth(220);
     m_sidebar->setMaximumWidth(320);
-    auto *sideLayout = new QVBoxLayout(m_sidebar);
+    auto *sideLayout = new QVBoxLayout(sidebarContents);
     sideLayout->setContentsMargins(18, 20, 18, 16);
     sideLayout->setSpacing(12);
     auto *brandRow = new QWidget(m_sidebar);
@@ -192,9 +202,7 @@ void MainWindow::buildInterface()
     brandLayout->addStretch();
     sideLayout->addWidget(brandRow);
 
-    m_connectionLabel = new QLabel(QStringLiteral("●  Not connected"), m_sidebar);
-    m_connectionLabel->setObjectName(QStringLiteral("connectionOffline"));
-    sideLayout->addWidget(m_connectionLabel);
+
     sideLayout->addWidget(eyebrow(QStringLiteral("PROJECTS"), m_sidebar));
     m_projects = new QListWidget(m_sidebar);
     m_projects->setObjectName(QStringLiteral("projectList"));
@@ -219,26 +227,48 @@ void MainWindow::buildInterface()
     contentLayout->setSpacing(0);
     auto *header = new QWidget(content);
     header->setObjectName(QStringLiteral("workspaceHeader"));
-    auto *headerLayout = new QHBoxLayout(header);
-    headerLayout->setContentsMargins(22, 12, 18, 12);
+    auto *headerLayout = new QVBoxLayout(header);
+    headerLayout->setContentsMargins(14, 8, 14, 8);
+    headerLayout->setSpacing(6);
+    auto *connectionRow = new QHBoxLayout;
+    headerLayout->addLayout(connectionRow);
+    auto *modeRow = new QHBoxLayout;
+    headerLayout->addLayout(modeRow);
+    header->setMinimumHeight(92);
     auto *sidebarButton = new QToolButton(header);
+    m_sidebarButton = sidebarButton;
+    sidebarButton->setCheckable(true);
+    sidebarButton->setChecked(true);
+    sidebarButton->setAccessibleName(QStringLiteral("Toggle sidebar"));
     sidebarButton->setText(QStringLiteral("☰"));
     sidebarButton->setToolTip(QStringLiteral("Toggle sidebar (Ctrl+\\)"));
     sidebarButton->setObjectName(QStringLiteral("iconButton"));
     connect(sidebarButton, &QToolButton::clicked, this, &MainWindow::toggleSidebar);
-    headerLayout->addWidget(sidebarButton);
+    connectionRow->addWidget(sidebarButton);
     m_breadcrumb = new QLabel(QStringLiteral("No document open"), header);
     m_breadcrumb->setObjectName(QStringLiteral("breadcrumb"));
     m_breadcrumb->setMinimumWidth(0);
     m_breadcrumb->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_breadcrumb->setToolTip(m_breadcrumb->text());
-    headerLayout->addWidget(m_breadcrumb, 1);
+    connectionRow->addWidget(m_breadcrumb, 1);
     m_activity = new QProgressBar(header);
     m_activity->setRange(0, 0);
     m_activity->setFixedSize(72, 6);
     m_activity->setTextVisible(false);
     m_activity->hide();
-    headerLayout->addWidget(m_activity);
+    connectionRow->addWidget(m_activity);
+    m_connectionLabel = new QLabel(QStringLiteral("●  Not connected"), header);
+    m_connectionLabel->setObjectName(QStringLiteral("connectionOffline"));
+    m_connectionLabel->setMaximumWidth(240);
+    m_connectionLabel->setMinimumWidth(0);
+    m_connectionLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    m_disconnectButton = new QToolButton(header);
+    m_disconnectButton->setObjectName(QStringLiteral("disconnectButton"));
+    m_disconnectButton->setText(QStringLiteral("Disconnect"));
+    m_disconnectButton->setToolTip(QStringLiteral("Disconnect from the Forge server"));
+    m_disconnectButton->setAccessibleName(QStringLiteral("Disconnect from server"));
+    m_disconnectButton->hide();
+    connect(m_disconnectButton, &QToolButton::clicked, this, &MainWindow::disconnectServer);
     m_codeButton = new QToolButton(header);
     m_codeButton->setText(QStringLiteral("Code"));
     m_codeButton->setCheckable(true);
@@ -260,16 +290,25 @@ void MainWindow::buildInterface()
     connect(m_codeButton, &QToolButton::clicked, this, &MainWindow::showCodeMode);
     connect(m_visualButton, &QToolButton::clicked, this, &MainWindow::showVisualMode);
     connect(m_graphButton, &QToolButton::clicked, this, &MainWindow::showGraphMode);
-    headerLayout->addWidget(m_codeButton);
-    headerLayout->addWidget(m_visualButton);
-    headerLayout->addWidget(m_graphButton);
+    modeRow->addWidget(m_codeButton);
+    modeRow->addWidget(m_visualButton);
+    modeRow->addWidget(m_graphButton);
+    modeRow->addStretch();
+    connectionRow->addWidget(m_connectionLabel);
+    connectionRow->addWidget(m_disconnectButton);
     contentLayout->addWidget(header);
 
     m_workspace = new QStackedWidget(content);
     m_workspace->setObjectName(QStringLiteral("workspaceStack"));
-    m_welcomePage = new QWidget(m_workspace);
+    auto *welcomeScroll = new QScrollArea(m_workspace);
+    welcomeScroll->setWidgetResizable(true);
+    welcomeScroll->setFrameShape(QFrame::NoFrame);
+    m_welcomePage = welcomeScroll;
+    auto *welcomeContents = new QWidget(welcomeScroll);
+    welcomeContents->setObjectName(QStringLiteral("welcomePage"));
+    welcomeScroll->setWidget(welcomeContents);
     m_welcomePage->setObjectName(QStringLiteral("welcomePage"));
-    auto *welcomeLayout = new QVBoxLayout(m_welcomePage);
+    auto *welcomeLayout = new QVBoxLayout(welcomeContents);
     welcomeLayout->setContentsMargins(20, 20, 20, 28);
     welcomeLayout->setAlignment(Qt::AlignCenter);
     welcomeLayout->setSpacing(14);
@@ -327,6 +366,11 @@ void MainWindow::buildInterface()
     root->setStretchFactor(0, 0);
     root->setStretchFactor(1, 1);
     root->setSizes({272, 1208});
+    connect(root, &QSplitter::splitterMoved, this, [this](int, int) {
+        if (m_sidebarExpanded && m_sidebarAnimation == nullptr) {
+            m_sidebarWidth = qBound(220, m_sidebar->width(), 320);
+        }
+    });
 
     m_pluginToolBar = addToolBar(QStringLiteral("Plugin tools"));
     m_pluginToolBar->setObjectName(QStringLiteral("pluginToolBar"));
@@ -376,7 +420,8 @@ void MainWindow::buildActions()
     m_graphCreateAction = fileMenu->addAction(QStringLiteral("New operation graph…"), this, &MainWindow::createGraph);
     m_graphCreateAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+G")));
     fileMenu->addSeparator();
-    fileMenu->addAction(QStringLiteral("Disconnect"), this, &MainWindow::disconnectServer);
+    m_disconnectAction = fileMenu->addAction(QStringLiteral("Disconnect"), this, &MainWindow::disconnectServer);
+    m_disconnectAction->setEnabled(false);
     auto *quitAction = fileMenu->addAction(QStringLiteral("Quit"), qApp, &QApplication::quit);
     quitAction->setShortcut(QKeySequence::Quit);
 
@@ -492,13 +537,7 @@ void MainWindow::restoreWindowLayout()
         m_sidebarExpanded = false;
         m_sidebarAutoCollapsed = true;
     }
-    if (m_sidebarExpanded) {
-        m_sidebar->setMinimumWidth(220);
-        m_sidebar->setMaximumWidth(320);
-    } else {
-        m_sidebar->setMinimumWidth(0);
-        m_sidebar->setMaximumWidth(0);
-    }
+    applySidebarState();
     if (width() < 1100 && m_pythonDock->isVisible() && m_teamDock->isVisible()) {
         tabifyDockWidget(m_pythonDock, m_teamDock);
         m_teamDock->raise();
@@ -532,6 +571,8 @@ void MainWindow::connectToServer()
     if (m_dirty && !sameServer && !confirmDiscard()) {
         return;
     }
+    const QScopedValueRollback<bool> disconnecting(m_disconnecting, true);
+    m_teamWorkspace->reset();
     if (!m_api->configureServer(normalized, dialog.allowInsecureHttp(), &error)) {
         QMessageBox::warning(this, QStringLiteral("Cannot connect"), error);
         return;
@@ -545,6 +586,7 @@ void MainWindow::connectToServer()
     }
     m_preferences.save();
     m_remoteMode = true;
+    updateConnectionActions();
     if (!sameServer) {
         m_workspaceRoot.clear();
         m_currentProject.clear();
@@ -581,11 +623,13 @@ void MainWindow::disconnectServer()
     if (!confirmDiscard()) {
         return;
     }
+    const QScopedValueRollback<bool> disconnecting(m_disconnecting, true);
     if (m_api->isConfigured()) {
         m_api->logout();
     }
-    m_api->clearCredentials();
     m_remoteMode = false;
+    m_api->clearCredentials();
+    updateConnectionActions();
     m_projects->clear();
     m_documents->clear();
     m_currentProject.clear();
@@ -619,8 +663,10 @@ void MainWindow::openLocalWorkspace()
     if (selected.isEmpty()) {
         return;
     }
-    m_api->clearCredentials();
+    const QScopedValueRollback<bool> disconnecting(m_disconnecting, true);
     m_remoteMode = false;
+    m_api->clearCredentials();
+    updateConnectionActions();
     m_teamWorkspace->reset();
     m_teamDock->hide();
     populateLocalProjects(selected);
@@ -674,10 +720,22 @@ void MainWindow::populateLocalProjects(const QString &rootPath)
 void MainWindow::selectProject()
 {
     if (!confirmDiscard()) {
+        QSignalBlocker blocker(m_projects);
+        for (int row = 0; row < m_projects->count(); ++row) {
+            auto *previous = m_projects->item(row);
+            if (previous->text() == m_currentProject) {
+                m_projects->setCurrentItem(previous);
+                break;
+            }
+        }
         return;
     }
     auto *item = m_projects->currentItem();
     if (item == nullptr) {
+        return;
+    }
+    if (item->data(ProjectPathRole).toString() == m_currentProjectPath
+        && item->text() == m_currentProject) {
         return;
     }
     m_currentProject = item->text();
@@ -688,7 +746,9 @@ void MainWindow::selectProject()
     m_saveAction->setEnabled(false);
     m_validateAction->setEnabled(true);
     if (item->data(ProjectSourceRole).toInt() == RemoteSource) {
+        m_teamWorkspace->setCapabilities(QJsonObject{});
         m_teamWorkspace->setProject(m_currentProject);
+        m_api->fetchCapabilities(m_currentProject);
         m_api->fetchDocuments(m_currentProject);
     } else {
         m_teamWorkspace->setProject(QString());
@@ -741,6 +801,8 @@ void MainWindow::openSelectedDocument()
         return;
     }
     if (m_remoteMode) {
+        m_pendingOpenOperation = QStringLiteral("document:%1:%2").arg(m_currentProject, relative);
+        m_pendingOpenGeneration = m_editGeneration;
         m_api->fetchDocument(m_currentProject, relative);
         return;
     }
@@ -755,6 +817,8 @@ void MainWindow::openSelectedDocument()
 
 void MainWindow::loadDocument(const QString &path, const QByteArray &content, const QString &sha256)
 {
+    m_workspace->setCurrentWidget(m_codeEditor);
+    m_pendingOpenOperation.clear();
     m_currentDocument = path;
     m_currentSha256 = sha256;
     m_updatingEditor = true;
@@ -1139,6 +1203,8 @@ void MainWindow::showWelcome()
 {
     m_currentDocument.clear();
     m_currentSha256.clear();
+    m_pendingOpenOperation.clear();
+    setDirty(false);
     m_saveAction->setEnabled(false);
     m_codeButton->setChecked(false);
     m_codeButton->setEnabled(false);
@@ -1156,6 +1222,10 @@ void MainWindow::showWelcome()
 
 void MainWindow::showVisualMode()
 {
+    if (m_workspace->currentWidget() == m_visualDesigner) {
+        m_visualButton->setChecked(true);
+        return;
+    }
     if (!m_visualButton->isEnabled()) {
         return;
     }
@@ -1175,6 +1245,10 @@ void MainWindow::showVisualMode()
 
 void MainWindow::showGraphMode()
 {
+    if (m_workspace->currentWidget() == m_graphEditor) {
+        m_graphButton->setChecked(true);
+        return;
+    }
     if (!m_graphButton->isEnabled()) {
         return;
     }
@@ -1205,37 +1279,42 @@ void MainWindow::animateWorkspace(QWidget *widget)
     animation->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
-void MainWindow::toggleSidebar()
+void MainWindow::applySidebarState()
 {
     if (m_sidebarAnimation != nullptr) {
         m_sidebarAnimation->stop();
         m_sidebarAnimation->deleteLater();
         m_sidebarAnimation = nullptr;
     }
+    m_sidebar->setMinimumWidth(m_sidebarExpanded ? 220 : 0);
+    m_sidebar->setMaximumWidth(m_sidebarExpanded ? 320 : 0);
+    m_sidebar->setVisible(m_sidebarExpanded);
+    m_rootSplitter->setHandleWidth(m_sidebarExpanded ? 1 : 0);
+    m_rootSplitter->handle(1)->setVisible(m_sidebarExpanded);
+    m_rootSplitter->setSizes({m_sidebarExpanded ? m_sidebarWidth : 0,
+                              qMax(1, m_rootSplitter->width() - (m_sidebarExpanded ? m_sidebarWidth : 0))});
+    m_sidebarButton->setChecked(m_sidebarExpanded);
+}
+
+void MainWindow::toggleSidebar()
+{
+    if (m_sidebarExpanded && m_sidebarAnimation == nullptr) {
+        m_sidebarWidth = qBound(220, m_sidebar->width(), 320);
+    }
     m_sidebarAutoCollapsed = false;
-    const int start = m_sidebar->width();
-    const int end = m_sidebarExpanded ? 0 : qBound(220, width() / 4, 290);
     m_sidebarExpanded = !m_sidebarExpanded;
-    m_sidebar->setMinimumWidth(0);
-    auto *animation = new QPropertyAnimation(m_sidebar, "maximumWidth", m_sidebar);
-    m_sidebarAnimation = animation;
-    animation->setDuration(180);
-    animation->setStartValue(start);
-    animation->setEndValue(end);
-    animation->setEasingCurve(QEasingCurve::InOutCubic);
-    connect(animation, &QPropertyAnimation::finished, this, [this, animation, end] {
-        if (m_sidebarAnimation != animation) {
-            return;
-        }
-        if (end > 0) {
-            m_sidebar->setMinimumWidth(220);
-            m_sidebar->setMaximumWidth(320);
-        } else {
-            m_sidebar->setMaximumWidth(0);
-        }
-        m_sidebarAnimation = nullptr;
-    });
-    animation->start(QAbstractAnimation::DeleteWhenStopped);
+    applySidebarState();
+}
+
+void MainWindow::updateConnectionActions()
+{
+    const bool connected = m_remoteMode && m_api->hasServer();
+    m_disconnectButton->setVisible(connected);
+    m_disconnectAction->setEnabled(connected);
+    m_connectionLabel->setFixedWidth(qBound(110, m_connectionLabel->fontMetrics().horizontalAdvance(m_connectionLabel->text()) + 24, width() < 1100 ? 140 : 210));
+    m_connectionLabel->setToolTip(m_connectionLabel->text());
+    m_connectionLabel->style()->unpolish(m_connectionLabel);
+    m_connectionLabel->style()->polish(m_connectionLabel);
 }
 
 void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payload)
@@ -1263,6 +1342,7 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         if (operation == QStringLiteral("auth-logout")) {
             return;
         }
+        m_sessionExpired = false;
         const auto profile = payload.value(QStringLiteral("profile")).toObject();
         m_connectionLabel->setText(
             QStringLiteral("●  %1 · @%2")
@@ -1271,8 +1351,9 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_connectionLabel->setObjectName(QStringLiteral("connectionOnline"));
         m_connectionLabel->style()->unpolish(m_connectionLabel);
         m_connectionLabel->style()->polish(m_connectionLabel);
-        m_api->fetchCapabilities();
-        m_api->fetchProfile();
+        m_teamWorkspace->setProject(m_currentProject);
+        m_api->fetchCapabilities(m_currentProject);
+        updateConnectionActions();
         m_teamDock->show();
         arrangeTeamDock();
         showStatusMessage(QStringLiteral("Account session established. Server roles and scopes remain authoritative."),
@@ -1280,7 +1361,10 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_pendingSetupUsername.clear();
         return;
     }
-    if (operation == QStringLiteral("capabilities")) {
+    if (operation == QStringLiteral("capabilities") || operation.startsWith(QStringLiteral("capabilities:"))) {
+        if (operation.startsWith(QStringLiteral("capabilities:"))
+            && operation != QStringLiteral("capabilities:%1").arg(m_currentProject)) { return; }
+        if (operation == QStringLiteral("capabilities") && !m_currentProject.isEmpty()) { return; }
         m_policyReadOnly = payload.value(QStringLiteral("read_only")).toBool(true);
         m_policyCreate = payload.value(QStringLiteral("allow_create_projects")).toBool(false);
         m_policyHooks = payload.value(QStringLiteral("allow_hooks")).toBool(false);
@@ -1294,6 +1378,8 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         return;
     }
     if (operation == QStringLiteral("projects")) {
+        if (!m_remoteMode || !m_api->isConfigured()) { return; }
+        QSignalBlocker blocker(m_projects);
         m_projects->clear();
         for (const auto &entry : payload.value(QStringLiteral("projects")).toArray()) {
             const auto object = entry.toObject();
@@ -1303,12 +1389,23 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
             item->setData(ProjectPathRole, object.value(QStringLiteral("directory")).toString());
             item->setData(ProjectSourceRole, RemoteSource);
         }
-        if (m_projects->count() > 0 && !m_dirty) {
+        int selectedRow = -1;
+        for (int row = 0; row < m_projects->count(); ++row) {
+            if (m_projects->item(row)->text() == m_currentProject) { selectedRow = row; break; }
+        }
+        if (selectedRow >= 0) {
+            m_projects->setCurrentRow(selectedRow);
+        } else if (m_projects->count() > 0 && !m_dirty) {
             m_projects->setCurrentRow(0);
         }
+        blocker.unblock();
+        if (selectedRow < 0 && !m_dirty && m_projects->currentItem() != nullptr) { selectProject(); }
         return;
     }
     if (operation.startsWith(QStringLiteral("documents:"))) {
+        if (!m_remoteMode || operation != QStringLiteral("documents:%1").arg(m_currentProject)) {
+            return;
+        }
         m_documents->clear();
         auto *root = new QTreeWidgetItem(m_documents, {QStringLiteral("Server documents")});
         for (const auto &entry : payload.value(QStringLiteral("documents")).toArray()) {
@@ -1328,7 +1425,7 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         const auto serverBytes = payload.value(QStringLiteral("content")).toString().toUtf8();
         const auto serverDigest = DocumentCodec::sha256(serverBytes);
         if (path != m_pendingSaveDocument || serverDigest != m_pendingSaveDigest) {
-            m_saveAction->setEnabled(!m_policyReadOnly && !m_currentDocument.isEmpty());
+            m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
             showSaveConflict(payload);
             return;
         }
@@ -1345,7 +1442,7 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_pendingSaveProject.clear();
         m_pendingSaveDocument.clear();
         m_pendingSaveDigest.clear();
-        m_saveAction->setEnabled(!m_policyReadOnly && !m_currentDocument.isEmpty());
+        m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
         return;
     }
     if (operation == QStringLiteral("conflict-document")) {
@@ -1353,6 +1450,9 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         return;
     }
     if (operation.startsWith(QStringLiteral("document:"))) {
+        if (!m_remoteMode || operation != m_pendingOpenOperation || m_pendingOpenGeneration != m_editGeneration) {
+            return;
+        }
         loadDocument(payload.value(QStringLiteral("path")).toString(), payload.value(QStringLiteral("content")).toString().toUtf8(),
                      payload.value(QStringLiteral("sha256")).toString());
         return;
@@ -1372,7 +1472,7 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_pendingSaveProject.clear();
         m_pendingSaveDocument.clear();
         m_pendingSaveDigest.clear();
-        m_saveAction->setEnabled(!m_policyReadOnly && !m_currentDocument.isEmpty());
+        m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
         if (!savedProject.isEmpty()) {
             m_api->fetchDocuments(savedProject);
         }
@@ -1396,6 +1496,13 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
                                 const QString &category, const QString &technicalDetails,
                                 bool outcomeUncertain)
 {
+    if (category == QStringLiteral("canceled") || operation == QStringLiteral("auth-logout")
+        || m_disconnecting) {
+        return;
+    }
+    if (operation.startsWith(QStringLiteral("team-")) && statusCode != 401) {
+        return; // Team Workspace displays its own errors without interrupting editing.
+    }
     if (operation == QStringLiteral("auth-setup") && (outcomeUncertain || statusCode == 409)) {
         m_api->clearSession();
         m_connectionLabel->setText(QStringLiteral("●  Verifying founder setup…"));
@@ -1410,12 +1517,19 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
         m_teamWorkspace->reset();
     }
     if (statusCode == 401 && !operation.startsWith(QStringLiteral("auth-"))) {
+        if (m_sessionExpired) { return; }
+        m_sessionExpired = true;
+        m_api->cancelActiveRequests();
         m_connectionLabel->setText(QStringLiteral("●  Session expired"));
         m_connectionLabel->setObjectName(QStringLiteral("connectionOffline"));
         m_teamWorkspace->reset();
+        m_saveAction->setEnabled(false);
+        m_createAction->setEnabled(false);
+        m_graphCreateAction->setEnabled(false);
+        updateConnectionActions();
     }
     if (operation.startsWith(QStringLiteral("save:"))) {
-        m_saveAction->setEnabled(!m_policyReadOnly && !m_currentDocument.isEmpty());
+        m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
         if (statusCode == 409 && !m_pendingSaveProject.isEmpty()) {
             m_api->fetchDocument(m_pendingSaveProject, m_pendingSaveDocument,
                                  QStringLiteral("conflict-document"));
@@ -1561,15 +1675,17 @@ void MainWindow::showSaveConflict(const QJsonObject &serverDocument)
     m_pendingSaveProject.clear();
     m_pendingSaveDocument.clear();
     m_pendingSaveDigest.clear();
-    m_saveAction->setEnabled(!m_policyReadOnly && !m_currentDocument.isEmpty());
+    m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
 }
 
 void MainWindow::updatePolicyPanel()
 {
     if (!m_remoteMode) {
+        updateConnectionActions();
         m_policyLabel->setText(QStringLiteral("Local files · atomic save\nHooks + graphs: enabled locally\nFull schema: use Forge CLI/server"));
         return;
     }
+    updateConnectionActions();
     m_policyLabel->setText(QStringLiteral("%1\nCreate projects: %2\nPython hooks: %3\nOperation graphs: %4\nDocument limit: %5 KiB")
                                .arg(m_policyReadOnly ? QStringLiteral("Read only") : QStringLiteral("Validated writes"),
                                     m_policyCreate ? QStringLiteral("allowed") : QStringLiteral("blocked"),
@@ -1584,6 +1700,7 @@ void MainWindow::updatePolicyPanel()
 
 void MainWindow::setDirty(bool dirty)
 {
+    if (dirty) { ++m_editGeneration; }
     m_dirty = dirty;
     setWindowModified(dirty);
     const auto title = QStringLiteral("JSON API Forge Editor[*]");
@@ -1887,7 +2004,7 @@ void MainWindow::arrangeTeamDock()
     auto area = dockWidgetArea(m_teamDock);
     if (width() < CompactTeamDockBelow && area != Qt::BottomDockWidgetArea) {
         if (centralWidget() != nullptr) {
-            centralWidget()->hide();
+            centralWidget()->show();
         }
         QMainWindow::addDockWidget(Qt::BottomDockWidgetArea, m_teamDock);
         m_teamDockAutoBottom = true;
@@ -1901,7 +2018,7 @@ void MainWindow::arrangeTeamDock()
         area = Qt::RightDockWidgetArea;
     } else if (area == Qt::BottomDockWidgetArea && width() < CompactTeamDockBelow) {
         if (centralWidget() != nullptr) {
-            centralWidget()->hide();
+            centralWidget()->show();
         }
     } else if (centralWidget() != nullptr) {
         centralWidget()->show();
@@ -1948,13 +2065,11 @@ void MainWindow::resizeEvent(QResizeEvent *event)
         }
         m_sidebarExpanded = false;
         m_sidebarAutoCollapsed = true;
-        m_sidebar->setMinimumWidth(0);
-        m_sidebar->setMaximumWidth(0);
+        applySidebarState();
     } else if (windowWidth >= RestoreSidebarAt && m_sidebarAutoCollapsed) {
         m_sidebarExpanded = true;
         m_sidebarAutoCollapsed = false;
-        m_sidebar->setMinimumWidth(220);
-        m_sidebar->setMaximumWidth(320);
+        applySidebarState();
     }
 
     if (windowWidth < 1100 && m_pythonDock != nullptr && m_teamDock != nullptr

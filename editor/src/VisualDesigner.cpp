@@ -95,16 +95,16 @@ QString valueText(const QJsonValue &value)
     return QString::fromUtf8(QJsonDocument(value.toArray()).toJson(QJsonDocument::Compact));
 }
 
-QJsonValue parseValue(const QString &text)
+bool parseValue(const QString &text, const QJsonValue &original, QJsonValue *value)
 {
-    const auto trimmed = text.trimmed();
+    if (original.isString()) { *value = text; return true; }
     QJsonParseError error;
-    const auto wrapped = QByteArray("{\"value\":") + trimmed.toUtf8() + QByteArray("}");
-    const auto parsed = QJsonDocument::fromJson(wrapped, &error);
-    if (error.error == QJsonParseError::NoError && parsed.isObject()) {
-        return parsed.object().value(QStringLiteral("value"));
-    }
-    return text;
+    const auto parsed = QJsonDocument::fromJson(QByteArray("{\"value\":") + text.trimmed().toUtf8() + QByteArray("}"), &error);
+    if (error.error != QJsonParseError::NoError || !parsed.isObject()) { return false; }
+    const auto candidate = parsed.object().value(QStringLiteral("value"));
+    if (candidate.type() != original.type()) { return false; }
+    *value = candidate;
+    return true;
 }
 } // namespace
 
@@ -164,6 +164,9 @@ VisualDesigner::VisualDesigner(QWidget *parent)
 
     connect(m_canvas, &QTreeWidget::currentItemChanged, this, [this] { showProperties(); });
     connect(m_properties, &QTableWidget::cellChanged, this, &VisualDesigner::applyPropertyEdit);
+    connect(m_palette, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
+        insertTemplate(item->data(Qt::UserRole).toByteArray());
+    });
     installBuiltInComponents();
 }
 
@@ -199,7 +202,7 @@ void VisualDesigner::addPaletteComponent(const QString &label, const QString &co
 {
     const QJsonObject payload{{QStringLiteral("collection"), collection}, {QStringLiteral("value"), value}};
     auto *item = new QListWidgetItem(label, m_palette);
-    item->setToolTip(QStringLiteral("Drag onto the app structure"));
+    item->setToolTip(QStringLiteral("Double-click or drag onto the app structure"));
     item->setData(Qt::UserRole, QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }
 
@@ -281,8 +284,20 @@ void VisualDesigner::applyPropertyEdit(int row, int column)
     if (object.isEmpty()) {
         return;
     }
-    object.insert(m_properties->item(row, 0)->text(), parseValue(m_properties->item(row, 1)->text()));
+    const auto key = m_properties->item(row, 0)->text();
+    QJsonValue value;
+    if (!parseValue(m_properties->item(row, 1)->text(), object.value(key), &value)) {
+        emit statusMessage(QStringLiteral("Enter valid JSON of the existing property type. Use Code mode to change types."));
+        showProperties();
+        return;
+    }
+    object.insert(key, value);
     replaceSelectedObject(object);
+    auto *selected = m_canvas->currentItem();
+    if (selected != nullptr && selected->data(0, IndexRole).toLongLong() >= 0) {
+        selected->setText(0, object.value(QStringLiteral("name")).toString(
+            object.value(QStringLiteral("path")).toString(QStringLiteral("Item %1").arg(selected->data(0, IndexRole).toLongLong() + 1))));
+    }
     emit documentChanged(m_document);
 }
 
@@ -317,7 +332,12 @@ void VisualDesigner::insertTemplate(const QByteArray &payload)
         emit statusMessage(QStringLiteral("Component does not declare a target collection."));
         return;
     }
-    auto array = m_document.value(collection).toArray();
+    const auto existing = m_document.value(collection);
+    if (!existing.isUndefined() && !existing.isArray()) {
+        emit statusMessage(QStringLiteral("The target collection is not an array; existing data was preserved."));
+        return;
+    }
+    auto array = existing.toArray();
     array.append(value);
     m_document.insert(collection, array);
     refreshCanvas();

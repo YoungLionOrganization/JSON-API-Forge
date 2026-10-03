@@ -18,6 +18,7 @@ class QPropertyAnimation;
 class QResizeEvent;
 class PythonSdkPanel;
 class QStackedWidget;
+class QSplitter;
 class QToolBar;
 class QToolButton;
 class QTreeWidget;
@@ -69,6 +70,7 @@ private slots:
                         bool outcomeUncertain);
 
 private:
+    friend class EditorUiTests;
     void buildInterface();
     void buildActions();
     void applyStyle();
@@ -88,13 +90,19 @@ private:
     void showWelcome();
     void updatePolicyPanel();
     void arrangeTeamDock();
+    void applySidebarState();
+    void updateConnectionActions();
     void reloadPlugins();
     void restoreWindowLayout();
     [[nodiscard]] QSet<QString> enabledPluginIds() const;
 
     ApiClient *m_api = nullptr;
     PluginManager *m_pluginManager = nullptr;
+    QSplitter *m_rootSplitter = nullptr;
     QWidget *m_sidebar = nullptr;
+    QToolButton *m_sidebarButton = nullptr;
+    QToolButton *m_disconnectButton = nullptr;
+    QAction *m_disconnectAction = nullptr;
     QListWidget *m_projects = nullptr;
     QTreeWidget *m_documents = nullptr;
     QLabel *m_connectionLabel = nullptr;
@@ -126,6 +134,12 @@ private:
     QString m_currentProjectPath;
     QString m_currentDocument;
     QString m_currentSha256;
+    QString m_pendingOpenOperation;
+    quint64 m_editGeneration = 0;
+    quint64 m_pendingOpenGeneration = 0;
+    int m_sidebarWidth = 272;
+    bool m_disconnecting = false;
+    bool m_sessionExpired = false;
     bool m_remoteMode = false;
     bool m_dirty = false;
     bool m_updatingEditor = false;

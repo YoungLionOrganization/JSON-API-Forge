@@ -333,6 +333,22 @@ jobs:
           -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
       - name: Compile
         run: cmake --build build --config Release --parallel 2
+      - name: Check out the verified server contract
+        if: matrix.artifact == 'linux-x64'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: a85126cde592adb3208364ef60daef1392e940a3
+          path: build/server-contract
+          persist-credentials: false
+      - name: Install canonical server contract dependencies
+        if: matrix.artifact == 'linux-x64'
+        run: python -m pip install -r build/server-contract/requirements.txt
+      - name: Exercise native Editor against the canonical server
+        if: matrix.artifact == 'linux-x64'
+        run: >-
+          python editor/tests/run_server_contract.py
+          --server-source build/server-contract
+          --test-binary build/editor/forge_editor_ui_tests
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure --verbose
       - name: Preserve native test diagnostics
@@ -343,6 +359,8 @@ jobs:
           path: |
             build/Testing/Temporary/LastTest.log
             build/editor/editor-tests.xml
+            build/editor/editor-ui-tests.xml
+            build/editor/editor-contract-tests.xml
           if-no-files-found: warn
       - name: Stage install tree
         run: cmake --install build --config Release --prefix stage

@@ -1,5 +1,14 @@
 # Editor changelog
 
+## Editor fixes — 2026-10-03 (0.5.1)
+
+- Restored permission-aware team startup, project-scoped member capabilities and profile editing; added a native integration test against the canonical server.
+- Moved Disconnect to the persistent workspace header, reclaimed splitter space immediately when hiding navigation, and kept the document workspace visible with the team dock on compact windows.
+- Preserved chat and note drafts across failed requests, delayed acknowledgements and area changes; filtered stale project/area responses and avoided overlapping message polling.
+- Added restricted-note reader rank, accurate create-only note labels, camera/microphone permission prompts and safe call-window cleanup.
+- Preserved edits when reselecting Visual/Graph modes or opening another document, and kept visual property types intact.
+- Added native GUI regression tests to every platform build and the Linux sanitizer job, plus a pinned canonical-server contract test on Linux x64.
+
 ## [0.5.1] — 2026-09-06
 
 - Fixed graph wire use-after-free during scene rebuilds and cancelled stale drag interactions; added a real mouse-event regression test.

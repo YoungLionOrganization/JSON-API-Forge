@@ -26,6 +26,9 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QSignalBlocker>
+#include <QScrollBar>
+#include <QScrollArea>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTextEdit>
@@ -38,6 +41,9 @@
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
 #include <QWebEngineView>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+#include <QWebEnginePermission>
+#endif
 #endif
 
 namespace {
@@ -73,10 +79,12 @@ QString jsonText(const QJsonValue &value)
     return value.toVariant().toString();
 }
 
-QPushButton *actionButton(const QString &text, QWidget *parent)
+QPushButton *actionButton(const QString &text, QWidget *parent, const QString &permission = {}, bool needsArea = false)
 {
     auto *button = new QPushButton(text, parent);
     button->setObjectName(QStringLiteral("teamActionButton"));
+    button->setProperty("forgePermission", permission);
+    button->setProperty("forgeNeedsArea", needsArea);
     return button;
 }
 
@@ -120,19 +128,29 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
     auto *mark = new QLabel(header);
     mark->setPixmap(QPixmap(QStringLiteral(":/branding/mark.png"))
                         .scaled(42, 42, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    m_profile->setTextFormat(Qt::PlainText);
     m_profile->setObjectName(QStringLiteral("teamProfile"));
     m_profile->setWordWrap(true);
+    m_projectLabel->setTextFormat(Qt::PlainText);
     m_projectLabel->setObjectName(QStringLiteral("teamProject"));
     m_projectLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_projectLabel->hide();
-    auto *editProfile = actionButton(QStringLiteral("Edit profile…"), header);
+    auto *editProfile = actionButton(QStringLiteral("Edit profile…"), header, QStringLiteral("profiles.write.own"));
     headerLayout->addWidget(mark);
     headerLayout->addWidget(m_profile, 1);
     headerLayout->addWidget(editProfile);
     headerLayout->addWidget(m_projectLabel);
     layout->addWidget(header);
+    m_feedback = new QLabel(this);
+    m_feedback->setObjectName(QStringLiteral("errorText"));
+    m_feedback->setTextFormat(Qt::PlainText);
+    m_feedback->setWordWrap(true);
+    m_feedback->hide();
+    layout->addWidget(m_feedback);
 
     auto *tabs = new QTabWidget(this);
+    m_tabs = tabs;
+    tabs->setUsesScrollButtons(true);
     tabs->setObjectName(QStringLiteral("teamTabs"));
     auto *spaces = new QWidget(tabs);
     auto *database = new QWidget(tabs);
@@ -144,15 +162,32 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
     buildTeamTab(team);
     buildNotesTab(notes);
     buildAuditTab(audit);
-    tabs->addTab(spaces, QStringLiteral("Spaces && calls"));
-    tabs->addTab(database, QStringLiteral("Database"));
-    tabs->addTab(team, QStringLiteral("People && roles"));
-    tabs->addTab(notes, QStringLiteral("Notes"));
-    tabs->addTab(audit, QStringLiteral("Audit"));
+    const auto addScrollableTab = [tabs](QWidget *content, const QString &title) {
+        content->setObjectName(QStringLiteral("teamTabContent"));
+        auto *scroll = new QScrollArea(tabs);
+        scroll->setObjectName(QStringLiteral("teamTabScroll"));
+        scroll->setWidget(content);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        tabs->addTab(scroll, title);
+    };
+    addScrollableTab(spaces, QStringLiteral("Spaces && calls"));
+    addScrollableTab(database, QStringLiteral("Database"));
+    addScrollableTab(team, QStringLiteral("People && roles"));
+    addScrollableTab(notes, QStringLiteral("Notes"));
+    addScrollableTab(audit, QStringLiteral("Audit"));
     layout->addWidget(tabs, 1);
 
     connect(m_api, &ApiClient::jsonReceived, this, &TeamWorkspace::handleJson);
-    connect(m_api, &ApiClient::requestFailed, this, &TeamWorkspace::handleError);
+    connect(m_api, &ApiClient::requestFailedDetailed, this,
+            [this](const QString &operation, int status, const QString &message, const QString &category,
+                   const QString &, bool outcomeUncertain) {
+                if (category == QStringLiteral("canceled")) { return; }
+                handleError(operation, status, message);
+                if (operation.startsWith(QStringLiteral("team-")) && outcomeUncertain) {
+                    m_feedback->setText(message + QStringLiteral(" Check whether the change reached the server before retrying."));
+                }
+            });
     connect(m_api, &ApiClient::fileDownloaded, this,
             [this](const QString &, const QString &path) {
                 emit statusMessage(QStringLiteral("Attachment saved atomically to %1").arg(path));
@@ -160,27 +195,35 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
     connect(editProfile, &QPushButton::clicked, this, &TeamWorkspace::editProfile);
     m_poll->setInterval(5000);
     connect(m_poll, &QTimer::timeout, this, [this] {
-        const auto area = currentAreaId();
-        if (m_api->isConfigured() && !area.isEmpty()) {
-            m_api->fetchMessages(area);
+        if (isVisible() && m_api->isConfigured() && m_collaborationEnabled) {
+            requestMessages();
         }
     });
+    updateActions();
 }
 
 void TeamWorkspace::buildTeamTab(QWidget *tab)
 {
     auto *layout = new QVBoxLayout(tab);
     auto *buttons = new QHBoxLayout;
-    auto *refresh = actionButton(QStringLiteral("Refresh people"), tab);
-    auto *invite = actionButton(QStringLiteral("Create scoped invitation…"), tab);
-    auto *createRole = actionButton(QStringLiteral("New restricted role…"), tab);
-    auto *manageButton = actionButton(QStringLiteral("Manage member…"), tab);
+    auto *refresh = actionButton(QStringLiteral("Refresh people"), tab, QStringLiteral("members.read"));
+    auto *invite = actionButton(QStringLiteral("Create scoped invitation…"), tab, QStringLiteral("invitations.manage"));
+    auto *createRole = actionButton(QStringLiteral("New restricted role…"), tab, QStringLiteral("roles.manage"));
+    auto *manageButton = actionButton(QStringLiteral("Manage member…"), tab, QStringLiteral("members.manage"));
     buttons->addWidget(refresh);
     buttons->addWidget(invite);
     buttons->addWidget(createRole);
     buttons->addWidget(manageButton);
     buttons->addStretch();
-    layout->addLayout(buttons);
+    auto *toolbar = new QWidget(tab);
+    toolbar->setLayout(buttons);
+    auto *toolbarScroll = new QScrollArea(tab);
+    toolbarScroll->setWidget(toolbar);
+    toolbarScroll->setWidgetResizable(true);
+    toolbarScroll->setFrameShape(QFrame::NoFrame);
+    toolbarScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    toolbarScroll->setFixedHeight(toolbar->sizeHint().height() + 18);
+    layout->addWidget(toolbarScroll);
     m_members = new QTreeWidget(tab);
     m_members->setColumnCount(5);
     m_members->setHeaderLabels({QStringLiteral("Member"), QStringLiteral("Username"), QStringLiteral("Title / status"),
@@ -199,8 +242,8 @@ void TeamWorkspace::buildTeamTab(QWidget *tab)
     m_roles->header()->setSectionResizeMode(2, QHeaderView::Stretch);
     layout->addWidget(m_roles, 1);
     connect(refresh, &QPushButton::clicked, this, [this] {
-        m_api->fetchMembers();
-        m_api->fetchRoles();
+        if (permits(QStringLiteral("members.read"))) { m_api->fetchMembers(); }
+        if (permits(QStringLiteral("roles.read"))) { m_api->fetchRoles(); }
     });
     connect(invite, &QPushButton::clicked, this, &TeamWorkspace::createInvitation);
     connect(createRole, &QPushButton::clicked, this, &TeamWorkspace::createRole);
@@ -216,22 +259,26 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     left->setMaximumWidth(290);
     auto *leftLayout = new QVBoxLayout(left);
     auto *areaButtons = new QHBoxLayout;
-    auto *refresh = actionButton(QStringLiteral("Refresh"), left);
-    auto *create = actionButton(QStringLiteral("New area"), left);
+    auto *refresh = actionButton(QStringLiteral("Refresh"), left, QStringLiteral("areas.read"));
+    auto *create = actionButton(QStringLiteral("New area"), left, QStringLiteral("areas.manage"));
     areaButtons->addWidget(refresh);
     areaButtons->addWidget(create);
     leftLayout->addLayout(areaButtons);
     m_areas = new QListWidget(left);
     m_areas->setObjectName(QStringLiteral("areaList"));
     leftLayout->addWidget(m_areas, 1);
+    m_spaceStatus = new QLabel(QStringLiteral("Sign in to load team spaces."), left);
+    m_spaceStatus->setObjectName(QStringLiteral("spaceStatus"));
+    m_spaceStatus->setWordWrap(true);
+    leftLayout->addWidget(m_spaceStatus);
     auto *callLabel = new QLabel(
         QStringLiteral("Calls use one-time tickets. Media is WebRTC peer-to-peer; Forge stores no audio/video."), left);
     callLabel->setObjectName(QStringLiteral("policyCard"));
     callLabel->setWordWrap(true);
     leftLayout->addWidget(callLabel);
     auto *callButtons = new QHBoxLayout;
-    auto *audio = actionButton(QStringLiteral("Audio"), left);
-    auto *video = actionButton(QStringLiteral("Video"), left);
+    auto *audio = actionButton(QStringLiteral("Audio"), left, QStringLiteral("calls.start"), true);
+    auto *video = actionButton(QStringLiteral("Video"), left, QStringLiteral("calls.start"), true);
     callButtons->addWidget(audio);
     callButtons->addWidget(video);
     leftLayout->addLayout(callButtons);
@@ -240,6 +287,9 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     auto *right = new QWidget(tab);
     auto *rightLayout = new QVBoxLayout(right);
     m_messages = new QTreeWidget(right);
+    m_messages->setObjectName(QStringLiteral("messageList"));
+    m_messages->setWordWrap(true);
+    m_messages->setTextElideMode(Qt::ElideNone);
     m_messages->setColumnCount(3);
     m_messages->setHeaderLabels(
         {QStringLiteral("When"), QStringLiteral("Member"), QStringLiteral("Message")});
@@ -252,9 +302,9 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     auto *attachmentHeader = new QHBoxLayout;
     auto *attachmentLabel = new QLabel(QStringLiteral("Shared files"), right);
     attachmentLabel->setObjectName(QStringLiteral("panelEyebrow"));
-    auto *upload = actionButton(QStringLiteral("Upload…"), right);
-    auto *download = actionButton(QStringLiteral("Download…"), right);
-    auto *refreshFiles = actionButton(QStringLiteral("Reload"), right);
+    auto *upload = actionButton(QStringLiteral("Upload…"), right, QStringLiteral("attachments.write"), true);
+    auto *download = actionButton(QStringLiteral("Download…"), right, QStringLiteral("attachments.read"), true);
+    auto *refreshFiles = actionButton(QStringLiteral("Reload"), right, QStringLiteral("attachments.read"), true);
     attachmentHeader->addWidget(attachmentLabel);
     attachmentHeader->addStretch();
     attachmentHeader->addWidget(upload);
@@ -262,6 +312,7 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     attachmentHeader->addWidget(refreshFiles);
     rightLayout->addLayout(attachmentHeader);
     m_attachments = new QTreeWidget(right);
+    m_attachments->setObjectName(QStringLiteral("attachmentList"));
     m_attachments->setColumnCount(4);
     m_attachments->setHeaderLabels({QStringLiteral("File"), QStringLiteral("Member"),
                                     QStringLiteral("Size"), QStringLiteral("SHA-256")});
@@ -272,17 +323,21 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     rightLayout->addWidget(m_attachments);
     auto *composer = new QHBoxLayout;
     m_message = new QLineEdit(right);
+    m_message->setObjectName(QStringLiteral("messageComposer"));
     m_message->setMaxLength(8000);
     m_message->setPlaceholderText(QStringLiteral("Write to the selected project area…"));
     auto *send = new QPushButton(QStringLiteral("Send"), right);
+    m_sendButton = send;
+    send->setProperty("forgePermission", QStringLiteral("messages.write"));
+    send->setProperty("forgeNeedsArea", true);
     send->setObjectName(QStringLiteral("primaryButton"));
     composer->addWidget(m_message, 1);
     composer->addWidget(send);
     rightLayout->addLayout(composer);
     layout->addWidget(right, 1);
     connect(refresh, &QPushButton::clicked, this, [this] {
-        if (!m_project.isEmpty()) {
-            m_api->fetchAreas(m_project);
+        if (m_collaborationEnabled && permits(QStringLiteral("areas.read"))) {
+            m_api->fetchAreas(projectScope());
         }
     });
     connect(create, &QPushButton::clicked, this, &TeamWorkspace::createArea);
@@ -306,10 +361,12 @@ void TeamWorkspace::buildDatabaseTab(QWidget *tab)
 {
     auto *layout = new QHBoxLayout(tab);
     m_databaseTree = new QTreeWidget(tab);
+    m_databaseTree->setObjectName(QStringLiteral("databaseTree"));
     m_databaseTree->setHeaderLabels({QStringLiteral("Runtime-declared database objects")});
     m_databaseTree->setMaximumWidth(330);
     layout->addWidget(m_databaseTree);
     m_rows = new QTableWidget(tab);
+    m_rows->setObjectName(QStringLiteral("databaseRows"));
     m_rows->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_rows->setAlternatingRowColors(true);
     m_rows->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -323,6 +380,7 @@ void TeamWorkspace::buildNotesTab(QWidget *tab)
 {
     auto *layout = new QHBoxLayout(tab);
     m_notes = new QTreeWidget(tab);
+    m_notes->setObjectName(QStringLiteral("noteList"));
     m_notes->setColumnCount(3);
     m_notes->setHeaderLabels({QStringLiteral("Title"), QStringLiteral("Author"), QStringLiteral("Visibility")});
     m_notes->setMaximumWidth(430);
@@ -330,32 +388,57 @@ void TeamWorkspace::buildNotesTab(QWidget *tab)
     auto *editor = new QWidget(tab);
     auto *editorLayout = new QVBoxLayout(editor);
     m_noteTitle = new QLineEdit(editor);
+    m_noteTitle->setObjectName(QStringLiteral("noteTitle"));
     m_noteTitle->setMaxLength(160);
     m_noteTitle->setPlaceholderText(QStringLiteral("Note title"));
     m_noteVisibility = new QComboBox(editor);
+    m_noteVisibility->setObjectName(QStringLiteral("noteVisibility"));
+    m_noteMinimumRank = new QSpinBox(editor);
+    m_noteMinimumRank->setObjectName(QStringLiteral("noteMinimumRank"));
+    m_noteMinimumRank->setRange(0, 0);
+    m_noteRankLabel = new QLabel(QStringLiteral("Minimum reader rank"), editor);
     m_noteVisibility->addItems(
         {QStringLiteral("open"), QStringLiteral("restricted"), QStringLiteral("private")});
     m_noteBody = new QTextEdit(editor);
+    m_noteBody->setObjectName(QStringLiteral("noteBody"));
     m_noteBody->setAcceptRichText(false);
     m_noteBody->setPlaceholderText(QStringLiteral("Project note. Rich HTML is not stored or rendered."));
-    auto *save = new QPushButton(QStringLiteral("Share note"), editor);
+    auto *save = new QPushButton(QStringLiteral("Share as new note"), editor);
+    m_noteSaveButton = save;
+    save->setProperty("forgePermission", QStringLiteral("notes.write"));
     save->setObjectName(QStringLiteral("primaryButton"));
-    auto *refresh = actionButton(QStringLiteral("Refresh notes"), editor);
+    auto *refresh = actionButton(QStringLiteral("Refresh notes"), editor, QStringLiteral("notes.read"));
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Title"), m_noteTitle);
     form->addRow(QStringLiteral("Visibility"), m_noteVisibility);
+    form->addRow(m_noteRankLabel, m_noteMinimumRank);
+    m_noteRankLabel->hide();
+    m_noteMinimumRank->hide();
+    connect(m_noteVisibility, &QComboBox::currentTextChanged, this, [this](const QString &visibility) {
+        const bool restricted = visibility == QStringLiteral("restricted");
+        m_noteRankLabel->setVisible(restricted);
+        m_noteMinimumRank->setVisible(restricted);
+    });
     editorLayout->addLayout(form);
     editorLayout->addWidget(m_noteBody, 1);
     auto *buttons = new QHBoxLayout;
     buttons->addWidget(save);
     buttons->addWidget(refresh);
+    auto *newNote = actionButton(QStringLiteral("New note"), editor, QStringLiteral("notes.write"));
+    buttons->addWidget(newNote);
+    connect(newNote, &QPushButton::clicked, this, [this] {
+        m_notes->clearSelection();
+        m_noteTitle->clear();
+        m_noteBody->clear();
+        m_noteVisibility->setCurrentIndex(0);
+    });
     buttons->addStretch();
     editorLayout->addLayout(buttons);
     layout->addWidget(editor, 1);
     connect(save, &QPushButton::clicked, this, &TeamWorkspace::saveNote);
     connect(refresh, &QPushButton::clicked, this, [this] {
-        if (!m_project.isEmpty()) {
-            m_api->fetchNotes(m_project);
+        if (m_collaborationEnabled && permits(QStringLiteral("notes.read"))) {
+            m_api->fetchNotes(projectScope());
         }
     });
     connect(m_notes, &QTreeWidget::itemSelectionChanged, this, [this] {
@@ -365,6 +448,7 @@ void TeamWorkspace::buildNotesTab(QWidget *tab)
             m_noteBody->setPlainText(item->data(0, Qt::UserRole).toString());
             const auto visibility = item->text(2);
             m_noteVisibility->setCurrentText(visibility);
+            m_noteMinimumRank->setValue(item->data(0, RecordRole).toJsonObject().value(QStringLiteral("minimum_rank")).toInt());
         }
     });
 }
@@ -372,9 +456,10 @@ void TeamWorkspace::buildNotesTab(QWidget *tab)
 void TeamWorkspace::buildAuditTab(QWidget *tab)
 {
     auto *layout = new QVBoxLayout(tab);
-    auto *refresh = actionButton(QStringLiteral("Refresh security audit"), tab);
+    auto *refresh = actionButton(QStringLiteral("Refresh security audit"), tab, QStringLiteral("audit.read"));
     layout->addWidget(refresh, 0, Qt::AlignLeft);
     m_audit = new QTreeWidget(tab);
+    m_audit->setObjectName(QStringLiteral("auditList"));
     m_audit->setColumnCount(5);
     m_audit->setHeaderLabels({QStringLiteral("When"), QStringLiteral("Action"), QStringLiteral("Project"),
                               QStringLiteral("Target"), QStringLiteral("Details")});
@@ -382,73 +467,161 @@ void TeamWorkspace::buildAuditTab(QWidget *tab)
     m_audit->setAlternatingRowColors(true);
     layout->addWidget(m_audit, 1);
     connect(refresh, &QPushButton::clicked, this,
-            [this] { m_api->fetchAudit(m_project.isEmpty() ? QString() : m_project); });
+            [this] { if (permits(QStringLiteral("audit.read"))) { m_api->fetchAudit(projectScope()); } });
 }
 
 void TeamWorkspace::setCapabilities(const QJsonObject &capabilities)
 {
+    m_permissions.clear();
+    for (const auto &permission : capabilities.value(QStringLiteral("permissions")).toArray()) {
+        m_permissions.insert(permission.toString());
+    }
     m_databaseEnabled = capabilities.value(QStringLiteral("database_browser")).toBool(false);
     m_collaborationEnabled = capabilities.value(QStringLiteral("collaboration")).toBool(false);
     m_callsEnabled = capabilities.value(QStringLiteral("calls")).toBool(false);
-    m_rank = capabilities.value(QStringLiteral("rank")).toInt();
+    m_rank = qBound(0, capabilities.value(QStringLiteral("rank")).toInt(), 1000);
+    m_noteMinimumRank->setRange(0, m_rank);
+    m_noteMinimumRank->setValue(m_rank);
     m_permissionCatalog = capabilities.value(QStringLiteral("permission_catalog")).toArray();
     const auto advertisedLimit = static_cast<qint64>(
         capabilities.value(QStringLiteral("max_attachment_bytes")).toDouble(16.0 * 1024.0 * 1024.0));
     m_maxAttachmentBytes = static_cast<qsizetype>(qBound<qint64>(1, advertisedLimit, 512LL * 1024LL * 1024LL));
+    updateActions();
+}
+
+QString TeamWorkspace::projectScope() const
+{
+    return m_project.isEmpty() ? QStringLiteral("*") : m_project;
+}
+
+bool TeamWorkspace::permits(const QString &permission) const
+{
+    if (!m_api->isConfigured()) { return false; }
+    if (m_permissions.contains(QStringLiteral("*")) || m_permissions.contains(permission)) { return true; }
+    for (const auto &granted : m_permissions) {
+        if (granted.endsWith(QStringLiteral(".*")) && permission.startsWith(granted.left(granted.size() - 1))) { return true; }
+    }
+    return false;
+}
+
+void TeamWorkspace::updateActions()
+{
+    const bool collaboration = m_api->isConfigured() && m_collaborationEnabled;
+    const bool areaSelected = collaboration && !currentAreaId().isEmpty();
+    for (auto *button : findChildren<QPushButton *>()) {
+        const auto permission = button->property("forgePermission").toString();
+        if (!permission.isEmpty()) {
+            bool enabled = permits(permission);
+            if (permission.startsWith(QStringLiteral("areas.")) || permission.startsWith(QStringLiteral("notes."))) {
+                enabled = enabled && collaboration;
+            }
+            if (button->property("forgeNeedsArea").toBool()) { enabled = enabled && areaSelected; }
+            if (permission.startsWith(QStringLiteral("calls."))) { enabled = enabled && m_callsEnabled; }
+            button->setEnabled(enabled);
+        }
+    }
+    m_sendButton->setEnabled(areaSelected && permits(QStringLiteral("messages.write")) && m_pendingMessageArea.isEmpty());
+    m_message->setEnabled(areaSelected && permits(QStringLiteral("messages.write")));
+    m_noteSaveButton->setEnabled(collaboration && permits(QStringLiteral("notes.write")) && m_pendingNoteProject.isEmpty());
+    m_noteTitle->setEnabled(collaboration && permits(QStringLiteral("notes.write")));
+    m_noteBody->setReadOnly(!collaboration || !permits(QStringLiteral("notes.write")));
+    const int previousTab = m_tabs->currentIndex();
+    m_tabs->setTabEnabled(0, collaboration);
+    m_tabs->setTabEnabled(1, m_api->isConfigured() && m_databaseEnabled && !m_project.isEmpty());
+    m_tabs->setTabEnabled(2, permits(QStringLiteral("members.read")) || permits(QStringLiteral("roles.read")));
+    m_tabs->setTabEnabled(3, collaboration && (permits(QStringLiteral("notes.read")) || permits(QStringLiteral("notes.write"))));
+    m_tabs->setTabEnabled(4, permits(QStringLiteral("audit.read")));
+    if (previousTab >= 0 && m_tabs->isTabEnabled(previousTab)) { m_tabs->setCurrentIndex(previousTab); }
+    else if (!m_api->isConfigured()) { m_tabs->setCurrentIndex(0); }
+    m_projectLabel->setText(m_project.isEmpty() ? QStringLiteral("SERVER-WIDE") : QStringLiteral("PROJECT · %1").arg(m_project));
+    m_projectLabel->setVisible(m_api->isConfigured());
+    if (!m_api->isConfigured()) {
+        m_spaceStatus->setText(QStringLiteral("Sign in to load team spaces."));
+    } else if (!m_collaborationEnabled) {
+        m_spaceStatus->setText(QStringLiteral("Team spaces are disabled or unavailable to this account."));
+    } else if (m_areas->count() == 0) {
+        m_spaceStatus->setText(permits(QStringLiteral("areas.manage"))
+            ? QStringLiteral("No spaces yet. Choose New area to start a conversation.")
+            : QStringLiteral("No accessible spaces. Ask a project manager to create one."));
+    } else {
+        m_spaceStatus->setText(QStringLiteral("%1 accessible space(s)").arg(m_areas->count()));
+    }
+}
+
+void TeamWorkspace::refreshProject()
+{
+    if (!m_api->isConfigured()) { m_poll->stop(); return; }
+    if (m_collaborationEnabled) {
+        if (permits(QStringLiteral("areas.read"))) { m_api->fetchAreas(projectScope()); }
+        if (permits(QStringLiteral("notes.read"))) { m_api->fetchNotes(projectScope()); }
+        if (permits(QStringLiteral("messages.read"))) { m_poll->start(); }
+    } else { m_poll->stop(); }
+    if (m_databaseEnabled && !m_project.isEmpty()) { m_api->fetchDatabases(m_project); }
+    if (permits(QStringLiteral("audit.read"))) { m_api->fetchAudit(projectScope()); }
 }
 
 void TeamWorkspace::setProject(const QString &project)
 {
-    if (m_project == project) {
-        return;
-    }
+    if (m_project == project) { updateActions(); return; }
     m_project = project;
-    m_projectLabel->setText(QStringLiteral("PROJECT · %1").arg(project));
-    m_projectLabel->setVisible(!project.isEmpty());
     m_areas->clear();
     m_messages->clear();
     m_attachments->clear();
     m_databaseTree->clear();
-    m_rows->clear();
+    m_rows->setRowCount(0);
+    m_rows->setColumnCount(0);
     m_notes->clear();
-    if (!project.isEmpty() && m_api->isConfigured()) {
-        if (m_collaborationEnabled) {
-            m_api->fetchAreas(project);
-            m_api->fetchNotes(project);
-            m_poll->start();
-        }
-        if (m_databaseEnabled) {
-            m_api->fetchDatabases(project);
-        }
-    } else {
-        m_poll->stop();
-    }
+    m_audit->clear();
+    m_selectedRowsOperation.clear();
+    m_noteTitle->clear();
+    m_noteBody->clear();
+    updateActions();
+    refreshProject();
 }
 
 void TeamWorkspace::refreshAll()
 {
-    if (!m_api->isConfigured()) {
-        return;
-    }
-    m_api->fetchProfile();
-    m_api->fetchMembers();
-    m_api->fetchRoles();
-    m_api->fetchAudit(m_project);
-    if (!m_project.isEmpty()) {
-        if (m_collaborationEnabled) {
-            m_api->fetchAreas(m_project);
-            m_api->fetchNotes(m_project);
-        }
-        if (m_databaseEnabled) {
-            m_api->fetchDatabases(m_project);
-        }
+    if (!m_api->isConfigured()) { return; }
+    if (permits(QStringLiteral("profiles.read"))) { m_api->fetchProfile(projectScope()); }
+    if (permits(QStringLiteral("members.read"))) { m_api->fetchMembers(); }
+    if (permits(QStringLiteral("roles.read"))) { m_api->fetchRoles(); }
+    refreshProject();
+    updateActions();
+}
+
+void TeamWorkspace::requestMessages()
+{
+    const auto area = currentAreaId();
+    if (!area.isEmpty() && m_messagesLoading != area && permits(QStringLiteral("messages.read"))) {
+        m_messagesLoading = area;
+        m_api->fetchMessages(area);
     }
 }
 
 void TeamWorkspace::reset()
 {
     m_poll->stop();
+    m_feedback->hide();
     m_project.clear();
+    m_databaseEnabled = false;
+    m_collaborationEnabled = false;
+    m_callsEnabled = false;
+    m_permissions.clear();
+    m_messageDrafts.clear();
+    m_selectedArea.clear();
+    m_pendingMessageArea.clear();
+    m_pendingMessageBody.clear();
+    m_messagesLoading.clear();
+    m_messagesRefreshNeeded.clear();
+    m_pendingNoteProject.clear();
+    m_pendingNoteTitle.clear();
+    m_pendingNoteBody.clear();
+    m_pendingNoteVisibility.clear();
+    m_selectedRowsOperation.clear();
+    m_message->clear();
+    m_noteTitle->clear();
+    m_noteBody->clear();
+    m_noteVisibility->setCurrentIndex(0);
     m_roleRecords = {};
     m_memberRecords = {};
     m_profileRecord = {};
@@ -461,7 +634,9 @@ void TeamWorkspace::reset()
         tree->clear();
     }
     m_areas->clear();
-    m_rows->clear();
+    m_rows->setRowCount(0);
+    m_rows->setColumnCount(0);
+    updateActions();
 }
 
 QString TeamWorkspace::currentAreaId() const
@@ -472,12 +647,19 @@ QString TeamWorkspace::currentAreaId() const
 
 void TeamWorkspace::selectArea()
 {
+    const auto area = currentAreaId();
+    if (area == m_selectedArea) { return; }
+    if (!m_selectedArea.isEmpty()) { m_messageDrafts.insert(m_selectedArea, m_message->text()); }
+    m_selectedArea = area;
+    m_message->setText(m_messageDrafts.value(area));
     m_messages->clear();
     m_attachments->clear();
-    const auto area = currentAreaId();
+    m_messagesLoading.clear();
+    m_messagesRefreshNeeded.clear();
+    updateActions();
     if (!area.isEmpty()) {
-        m_api->fetchMessages(area);
-        m_api->fetchAttachments(area);
+        requestMessages();
+        if (permits(QStringLiteral("attachments.read"))) { m_api->fetchAttachments(area); }
     }
 }
 
@@ -485,18 +667,22 @@ void TeamWorkspace::sendMessage()
 {
     const auto area = currentAreaId();
     const auto body = m_message->text().trimmed();
-    if (area.isEmpty() || body.isEmpty()) {
-        emit statusMessage(QStringLiteral("Select a project area and enter a message."));
+    if (!m_pendingMessageArea.isEmpty()) { return; }
+    if (!m_collaborationEnabled || !permits(QStringLiteral("messages.write")) || area.isEmpty() || body.isEmpty()) {
+        emit statusMessage(QStringLiteral("Select an accessible space and enter a message."));
         return;
     }
+    m_feedback->hide();
+    m_pendingMessageArea = area;
+    m_pendingMessageBody = body;
+    updateActions();
     m_api->postMessage(area, body);
-    m_message->clear();
 }
 
 void TeamWorkspace::createArea()
 {
-    if (m_project.isEmpty()) {
-        emit statusMessage(QStringLiteral("Select a remote project before creating an area."));
+    if (!m_collaborationEnabled || !permits(QStringLiteral("areas.manage"))) {
+        emit statusMessage(QStringLiteral("This account cannot create team spaces."));
         return;
     }
     QDialog dialog(this);
@@ -521,7 +707,7 @@ void TeamWorkspace::createArea()
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttons);
     if (dialog.exec() == QDialog::Accepted && !name->text().trimmed().isEmpty()) {
-        m_api->createArea(m_project, name->text().trimmed(), description->text().trimmed(),
+        m_api->createArea(projectScope(), name->text().trimmed(), description->text().trimmed(),
                           visibility->currentText(), rank->value());
     }
 }
@@ -530,7 +716,7 @@ void TeamWorkspace::editProfile()
 {
     if (m_profileRecord.isEmpty()) {
         emit statusMessage(QStringLiteral("Your profile is still loading."));
-        m_api->fetchProfile();
+        m_api->fetchProfile(projectScope());
         return;
     }
     QDialog dialog(this);
@@ -575,7 +761,7 @@ void TeamWorkspace::editProfile()
                                      {QStringLiteral("title"), title->text().trimmed()},
                                      {QStringLiteral("status"), status->text().trimmed()},
                                      {QStringLiteral("timezone"), timezoneField->text().trimmed()},
-                                     {QStringLiteral("bio"), bio->toPlainText().trimmed()}});
+                                     {QStringLiteral("bio"), bio->toPlainText().trimmed()}}, projectScope());
 }
 
 void TeamWorkspace::createRole()
@@ -811,12 +997,20 @@ void TeamWorkspace::downloadAttachment()
 
 void TeamWorkspace::saveNote()
 {
-    if (m_project.isEmpty() || m_noteTitle->text().trimmed().isEmpty()) {
+    if (!m_pendingNoteProject.isEmpty()) { return; }
+    if (!m_collaborationEnabled || !permits(QStringLiteral("notes.write")) || m_noteTitle->text().trimmed().isEmpty()) {
         emit statusMessage(QStringLiteral("Select a project and enter a note title."));
         return;
     }
-    m_api->createNote(m_project, currentAreaId(), m_noteTitle->text().trimmed(), m_noteBody->toPlainText(),
-                      m_noteVisibility->currentText());
+    m_feedback->hide();
+    m_pendingNoteProject = projectScope();
+    m_pendingNoteTitle = m_noteTitle->text();
+    m_pendingNoteBody = m_noteBody->toPlainText();
+    m_pendingNoteVisibility = m_noteVisibility->currentText();
+    m_pendingNoteRank = m_pendingNoteVisibility == QStringLiteral("restricted") ? m_noteMinimumRank->value() : 0;
+    updateActions();
+    m_api->createNote(projectScope(), currentAreaId(), m_noteTitle->text().trimmed(), m_pendingNoteBody,
+                      m_pendingNoteVisibility, m_pendingNoteRank);
 }
 
 void TeamWorkspace::selectDatabaseTable()
@@ -825,6 +1019,7 @@ void TeamWorkspace::selectDatabaseTable()
     if (item == nullptr || item->data(0, TableRole).toString().isEmpty()) {
         return;
     }
+    m_selectedRowsOperation = QStringLiteral("team-rows:%1:%2:%3").arg(m_project, item->data(0, AliasRole).toString(), item->data(0, TableRole).toString());
     m_api->fetchDatabaseRows(m_project, item->data(0, AliasRole).toString(),
                              item->data(0, TableRole).toString());
 }
@@ -902,13 +1097,13 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
     }
     if (operation == QStringLiteral("team-role-create")) {
         m_api->fetchRoles();
-        m_api->fetchAudit(m_project);
+        if (permits(QStringLiteral("audit.read"))) { m_api->fetchAudit(projectScope()); }
         emit statusMessage(QStringLiteral("Restricted role created; the server applied rank and scope checks."));
         return;
     }
     if (operation == QStringLiteral("team-member-update")) {
         m_api->fetchMembers();
-        m_api->fetchAudit(m_project);
+        if (permits(QStringLiteral("audit.read"))) { m_api->fetchAudit(projectScope()); }
         emit statusMessage(QStringLiteral("Worker memberships updated by the server."));
         return;
     }
@@ -927,12 +1122,14 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         }
         return;
     }
-    if (operation == QStringLiteral("team-areas") || operation == QStringLiteral("team-area-create")) {
-        if (operation == QStringLiteral("team-area-create")) {
-            m_api->fetchAreas(m_project);
+    if (operation.startsWith(QStringLiteral("team-areas:")) || operation.startsWith(QStringLiteral("team-area-create:"))) {
+        if (operation == QStringLiteral("team-area-create:%1").arg(projectScope())) {
+            m_api->fetchAreas(projectScope());
             return;
         }
+        if (operation != QStringLiteral("team-areas:%1").arg(projectScope())) { return; }
         const auto previous = currentAreaId();
+        QSignalBlocker blocker(m_areas);
         m_areas->clear();
         for (const auto &value : payload.value(QStringLiteral("areas")).toArray()) {
             const auto area = value.toObject();
@@ -951,9 +1148,18 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         if (m_areas->currentItem() == nullptr && m_areas->count() > 0) {
             m_areas->setCurrentRow(0);
         }
+        blocker.unblock();
+        selectArea();
+        updateActions();
         return;
     }
     if (operation.startsWith(QStringLiteral("team-messages:"))) {
+        const auto area = operation.mid(QStringLiteral("team-messages:").size());
+        if (m_messagesLoading == area) { m_messagesLoading.clear(); }
+        if (area != currentAreaId()) { return; }
+        auto *scroll = m_messages->verticalScrollBar();
+        const bool atBottom = scroll->value() >= scroll->maximum() - 2;
+        const int oldPosition = scroll->value();
         m_messages->clear();
         for (const auto &value : payload.value(QStringLiteral("messages")).toArray()) {
             const auto message = value.toObject();
@@ -962,18 +1168,37 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
                 {message.value(QStringLiteral("created_at")).toString(),
                  message.value(QStringLiteral("display_name")).toString(),
                  message.value(QStringLiteral("body")).toString()});
+            row->setToolTip(2, message.value(QStringLiteral("body")).toString());
             if (message.value(QStringLiteral("kind")).toString() == QStringLiteral("announcement")) {
                 row->setIcon(2, QIcon(QStringLiteral(":/branding/mark.png")));
             }
         }
-        m_messages->scrollToBottom();
+        if (atBottom) { m_messages->scrollToBottom(); }
+        else { scroll->setValue(oldPosition); }
+        if (m_messagesRefreshNeeded == area) { m_messagesRefreshNeeded.clear(); requestMessages(); }
         return;
     }
     if (operation.startsWith(QStringLiteral("team-message:"))) {
-        m_api->fetchMessages(currentAreaId());
+        const auto area = operation.mid(QStringLiteral("team-message:").size());
+        if (area == m_pendingMessageArea) {
+            if (area == currentAreaId() && m_message->text().trimmed() == m_pendingMessageBody) {
+                m_message->clear();
+                m_messageDrafts.remove(area);
+            } else if (m_messageDrafts.value(area).trimmed() == m_pendingMessageBody) {
+                m_messageDrafts.remove(area);
+            }
+            m_pendingMessageArea.clear();
+            m_pendingMessageBody.clear();
+            updateActions();
+        }
+        if (area == currentAreaId()) {
+            if (m_messagesLoading == area) { m_messagesRefreshNeeded = area; }
+            else { requestMessages(); }
+        }
         return;
     }
     if (operation.startsWith(QStringLiteral("team-attachments:"))) {
+        if (operation != QStringLiteral("team-attachments:%1").arg(currentAreaId())) { return; }
         m_attachments->clear();
         for (const auto &value : payload.value(QStringLiteral("attachments")).toArray()) {
             const auto attachment = value.toObject();
@@ -988,18 +1213,28 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         }
         return;
     }
-    if (operation == QStringLiteral("team-attachment-upload")) {
+    if (operation.startsWith(QStringLiteral("team-attachment-upload:"))) {
+        if (operation != QStringLiteral("team-attachment-upload:%1").arg(currentAreaId())) { return; }
         m_api->fetchAttachments(currentAreaId());
         emit statusMessage(QStringLiteral("File uploaded to the selected policy-filtered project area."));
         return;
     }
-    if (operation == QStringLiteral("team-notes") || operation == QStringLiteral("team-note-create")) {
-        if (operation == QStringLiteral("team-note-create")) {
-            m_noteTitle->clear();
-            m_noteBody->clear();
-            m_api->fetchNotes(m_project);
+    if (operation.startsWith(QStringLiteral("team-notes:")) || operation.startsWith(QStringLiteral("team-note-create:"))) {
+        if (operation.startsWith(QStringLiteral("team-note-create:"))) {
+            if (operation != QStringLiteral("team-note-create:%1").arg(m_pendingNoteProject)) { return; }
+            if (m_pendingNoteProject == projectScope() && m_noteTitle->text() == m_pendingNoteTitle
+                && m_noteBody->toPlainText() == m_pendingNoteBody && m_noteVisibility->currentText() == m_pendingNoteVisibility
+                && (m_pendingNoteVisibility != QStringLiteral("restricted") || m_noteMinimumRank->value() == m_pendingNoteRank)) {
+                m_noteTitle->clear();
+                m_noteBody->clear();
+            }
+            m_pendingNoteProject.clear();
+            updateActions();
+            if (operation == QStringLiteral("team-note-create:%1").arg(projectScope()) && permits(QStringLiteral("notes.read"))) { m_api->fetchNotes(projectScope()); }
             return;
         }
+        if (operation != QStringLiteral("team-notes:%1").arg(projectScope())) { return; }
+        QSignalBlocker blocker(m_notes);
         m_notes->clear();
         for (const auto &value : payload.value(QStringLiteral("notes")).toArray()) {
             const auto note = value.toObject();
@@ -1009,10 +1244,12 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
                  note.value(QStringLiteral("display_name")).toString(),
                  note.value(QStringLiteral("visibility")).toString()});
             row->setData(0, Qt::UserRole, note.value(QStringLiteral("body")).toString());
+            row->setData(0, RecordRole, note);
         }
         return;
     }
     if (operation.startsWith(QStringLiteral("team-databases:"))) {
+        if (operation != QStringLiteral("team-databases:%1").arg(m_project)) { return; }
         m_databaseTree->clear();
         for (const auto &databaseValue : payload.value(QStringLiteral("databases")).toArray()) {
             const auto database = databaseValue.toObject();
@@ -1036,6 +1273,7 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         return;
     }
     if (operation.startsWith(QStringLiteral("team-rows:"))) {
+        if (operation != m_selectedRowsOperation) { return; }
         const auto columns = payload.value(QStringLiteral("columns")).toArray();
         const auto rows = payload.value(QStringLiteral("rows")).toArray();
         m_rows->clear();
@@ -1057,7 +1295,7 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         emit statusMessage(QStringLiteral("Loaded %1 policy-filtered, read-only database rows.").arg(rows.size()));
         return;
     }
-    if (operation == QStringLiteral("team-call")) {
+    if (operation == QStringLiteral("team-call:%1").arg(currentAreaId())) {
         m_api->createCallTicket(payload.value(QStringLiteral("id")).toString());
         return;
     }
@@ -1071,7 +1309,7 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         }
         return;
     }
-    if (operation == QStringLiteral("team-audit")) {
+    if (operation == QStringLiteral("team-audit:%1").arg(projectScope())) {
         m_audit->clear();
         for (const auto &value : payload.value(QStringLiteral("events")).toArray()) {
             const auto event = value.toObject();
@@ -1088,9 +1326,21 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
 
 void TeamWorkspace::handleError(const QString &operation, int statusCode, const QString &message)
 {
+    if (operation == QStringLiteral("team-message:%1").arg(m_pendingMessageArea)) {
+        m_pendingMessageArea.clear();
+        m_pendingMessageBody.clear();
+        updateActions();
+    }
+    if (operation == QStringLiteral("team-note-create:%1").arg(m_pendingNoteProject)) {
+        m_pendingNoteProject.clear();
+        updateActions();
+    }
+    if (operation == QStringLiteral("team-messages:%1").arg(m_messagesLoading)) { m_messagesLoading.clear(); }
     if (!operation.startsWith(QStringLiteral("team-"))) {
         return;
     }
+    m_feedback->setText(message);
+    m_feedback->show();
     emit statusMessage(QStringLiteral("Team workspace · %1 · HTTP %2 · %3").arg(operation).arg(statusCode).arg(message));
 }
 
@@ -1107,6 +1357,34 @@ void TeamWorkspace::openCall(const QUrl &url)
     profile->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
     auto *view = new QWebEngineView(dialog);
     view->setPage(new QWebEnginePage(profile, view));
+    connect(dialog, &QDialog::finished, dialog, [view, profile] {
+        delete view; // Pages must be destroyed before their off-the-record profile.
+        delete profile;
+    });
+    const auto trustedOrigin = url.adjusted(QUrl::RemovePath | QUrl::RemoveQuery | QUrl::RemoveFragment);
+    auto *page = view->page();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    connect(page, &QWebEnginePage::permissionRequested, dialog, [dialog, trustedOrigin](QWebEnginePermission permission) {
+        using Type = QWebEnginePermission::PermissionType;
+        const bool media = permission.permissionType() == Type::MediaAudioCapture
+            || permission.permissionType() == Type::MediaVideoCapture
+            || permission.permissionType() == Type::MediaAudioVideoCapture;
+        const bool trusted = permission.origin().adjusted(QUrl::RemovePath | QUrl::RemoveQuery | QUrl::RemoveFragment) == trustedOrigin;
+        if (media && trusted && QMessageBox::question(dialog, QStringLiteral("Call media access"),
+                QStringLiteral("Allow this Forge call to use your microphone/camera?")) == QMessageBox::Yes) {
+            permission.grant();
+        } else { permission.deny(); }
+    });
+#else
+    connect(page, &QWebEnginePage::featurePermissionRequested, dialog, [dialog, page, trustedOrigin](const QUrl &origin, QWebEnginePage::Feature feature) {
+        const bool media = feature == QWebEnginePage::MediaAudioCapture || feature == QWebEnginePage::MediaVideoCapture
+            || feature == QWebEnginePage::MediaAudioVideoCapture;
+        const bool trusted = origin.adjusted(QUrl::RemovePath | QUrl::RemoveQuery | QUrl::RemoveFragment) == trustedOrigin;
+        const bool allowed = media && trusted && QMessageBox::question(dialog, QStringLiteral("Call media access"),
+                QStringLiteral("Allow this Forge call to use your microphone/camera?")) == QMessageBox::Yes;
+        page->setFeaturePermission(origin, feature, allowed ? QWebEnginePage::PermissionGrantedByUser : QWebEnginePage::PermissionDeniedByUser);
+    });
+#endif
     view->setUrl(url);
     layout->addWidget(view);
     dialog->show();

@@ -9,13 +9,13 @@ QMainWindow, QDialog, QWidget#contentArea, QStackedWidget#workspaceStack {
   background: #1a1b1e;
 }
 
-QWidget#sidebar {
+QWidget#sidebar, QWidget#sidebarContents {
   background: #24262a;
   border-right: 1px solid #41444a;
 }
 
 QWidget#workspaceHeader {
-  min-height: 42px;
+  min-height: 92px;
   background: #292b2f;
   border-bottom: 1px solid #41444a;
 }
@@ -82,7 +82,7 @@ QMenu::item { padding: 7px 30px 7px 12px; border-radius: 5px; }
 QMenu::item:selected { color: #1d1f22; background: #f2b84b; }
 QMenu::separator { height: 1px; background: #4d5057; margin: 5px 8px; }
 
-QPushButton, QToolButton#modeButton, QToolButton#iconButton, QToolButton#graphToolButton {
+QPushButton, QToolButton#disconnectButton, QToolButton#modeButton, QToolButton#iconButton, QToolButton#graphToolButton {
   min-height: 28px;
   background: #32353a;
   border: 1px solid #4d5057;
@@ -282,6 +282,7 @@ QToolTip { color: #f2efe8; background: #32353a; border: 1px solid #5a5e66; paddi
 
 /* v0.5.1 account, database and collaboration workspace */
 QWidget#teamWorkspace { background: #202225; }
+QWidget#teamTabContent, QScrollArea#teamTabScroll { background: #24262a; }
 QWidget#teamHeader {
   background: #292b2f;
   border: 1px solid #41444a;
@@ -299,6 +300,7 @@ QTabWidget#teamTabs QTabBar::tab {
   margin-right: 2px;
 }
 QTabWidget#teamTabs QTabBar::tab:selected { color: #202225; background: #f2b84b; border-color: #ffd071; }
+QTabWidget#teamTabs QTabBar::tab:disabled { color: #696c72; background: #23252a; }
 QPushButton#teamActionButton { color: #d7d6d3; background: #32353a; border-color: #4d5057; }
 QPushButton#teamActionButton:hover { color: #ffd071; border-color: #dfa33a; }
 QListWidget#areaList {
