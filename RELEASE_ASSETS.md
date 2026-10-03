@@ -1,10 +1,10 @@
-# Editor v0.5.1 release assets
+# Editor v0.5.2 release assets
 
-Download the `JSON-API-Forge-Editor-v0.5.1-release-assets` workflow artifact
+Download the `JSON-API-Forge-Editor-v0.5.2-release-assets` workflow artifact
 after all six matrix jobs, the sanitizer job and the release-assets job pass.
 
 For each architecture, attach both the multi-file portable ZIP and its native
-installer to the v0.5.1 GitHub Release:
+installer to the v0.5.2 GitHub Release:
 
 - Linux x64/ARM64: ZIP and Qt Installer Framework setup RUN;
 - Windows x64/ARM64: ZIP and Qt Installer Framework setup EXE;

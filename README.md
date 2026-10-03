@@ -1,8 +1,8 @@
-# JSON API Forge Editor v0.5.1
+# JSON API Forge Editor v0.5.2
 
 [![Desktop builds](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-build.yml/badge.svg?branch=Editor)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-build.yml?query=branch%3AEditor)
 [![CodeQL](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-codeql.yml/badge.svg?branch=Editor)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-codeql.yml?query=branch%3AEditor)
-[![Version 0.5.1](https://img.shields.io/badge/version-0.5.1-D4A017)](VERSION)
+[![Version 0.5.2](https://img.shields.io/badge/version-0.5.2-D4A017)](VERSION)
 [![Qt 6.4+](https://img.shields.io/badge/Qt-6.4%2B-41CD52?logo=qt)](QT-CREATOR-BUILD-GUIDE.md)
 [![Source available](https://img.shields.io/badge/license-source--available-555555)](LICENSE)
 
@@ -28,7 +28,11 @@ The four branches are separate products with their own source packages and workf
 | [`python-library`](https://github.com/YoungLionOrganization/JSON-API-Forge/tree/python-library) | Typed synchronous/asynchronous Python SDK | [SDK guide](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/python-library/PYTHON_LIBRARY.md) |
 | [`exampleApps`](https://github.com/YoungLionOrganization/JSON-API-Forge/tree/exampleApps) | 25 copy-ready reference applications | [Example catalog](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/exampleApps/EXAMPLE_APPS.md) |
 
-## What v0.5.1 includes
+## What v0.5.2 includes
+
+- Animated navigation that expands the document workspace smoothly.
+- Spaces & calls with visible availability, retry controls and a pinned chat composer.
+- A searchable Visual library, nested document outline, typed/JSON properties, duplication, array ordering and undo/redo.
 
 - local and remote project/document editing with optimistic SHA-256 revisions;
 - visual resource, operation, database and event-channel editing;
@@ -99,7 +103,7 @@ platform produces a multi-file portable ZIP plus a real installer:
 Each file receives a SHA-256 sidecar. The final job verifies every checksum
 and publishes one all-platform ZIP for download from the Actions run. The
 workflow never creates a GitHub Release automatically, so the Project Owner
-can review and attach the artifacts to v0.5.1.
+can review and attach the artifacts to v0.5.2.
 
 All setup packages are built with Qt's own Installer Framework. They present
 the repository license before installation and install the license alongside

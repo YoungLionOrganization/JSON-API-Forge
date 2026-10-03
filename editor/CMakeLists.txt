@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(JSONAPIForgeEditor VERSION 0.5.1 LANGUAGES C CXX)
+project(JSONAPIForgeEditor VERSION 0.5.2 LANGUAGES C CXX)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)

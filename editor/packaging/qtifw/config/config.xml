@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Installer>
     <Name>JSON API Forge Editor</Name>
-    <Version>0.5.1</Version>
+    <Version>0.5.2</Version>
     <Title>JSON API Forge Editor Setup</Title>
     <Publisher>Cavanshirpro</Publisher>
     <ProductUrl>https://github.com/YoungLionOrganization/JSON-API-Forge</ProductUrl>

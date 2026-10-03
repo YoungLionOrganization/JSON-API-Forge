@@ -312,3 +312,16 @@ QListWidget#areaList {
 QListWidget#areaList::item { min-height: 40px; padding: 6px 8px; border-radius: 6px; color: #c6c6c8; }
 QListWidget#areaList::item:selected { color: #202225; background: #f2b84b; }
 QDockWidget#teamWorkspaceDock::title { color: #f2b84b; background: #292b2f; }
+
+QWidget#visualPanel { background: #24262a; border: 1px solid #3e4147; border-radius: 8px; }
+QWidget#visualToolbar { background: #24262a; }
+QLabel#visualSummary { color: #eed4a3; background: #28251f; padding: 10px 14px; border-radius: 6px; }
+QLabel#visualSelection { color: #f2b84b; padding: 4px 0; font-weight: 700; }
+QLabel#visualFeedback { color: #a6a8ad; font-size: 11px; }
+QLabel#editorVersion { color: #cda755; font-size: 11px; padding-left: 54px; }
+QLabel#spaceAvailability { color: #f4d495; background: #332c20; border-radius: 5px; padding: 7px; }
+QPushButton#addComponentButton { background: #f2b84b; color: #202225; font-weight: 700; }
+QListWidget#componentPalette::item { padding: 7px; border: 1px solid #41444a; border-radius: 6px; }
+QListWidget#componentPalette::item:selected { background: #3e3524; color: #ffd071; border-color: #b78a3b; }
+QTableWidget#propertyTable::item { padding: 5px; }
+QSpinBox { background: #1d1f23; color: #eeeae2; border: 1px solid #4c5058; padding: 5px; border-radius: 4px; }

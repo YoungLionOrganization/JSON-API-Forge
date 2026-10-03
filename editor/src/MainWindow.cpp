@@ -42,6 +42,7 @@
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QPropertyAnimation>
+#include <QVariantAnimation>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -93,10 +94,10 @@ MainWindow::MainWindow(QWidget *parent, bool restoreLayout)
 {
     QCoreApplication::setOrganizationName(QStringLiteral("Cavanshirpro"));
     QCoreApplication::setApplicationName(QStringLiteral("JSON API Forge Editor"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.5.1"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.5.2"));
     m_preferences = EditorPreferences::load();
     applyPreferences();
-    setWindowTitle(QStringLiteral("JSON API Forge Editor"));
+    setWindowTitle(QStringLiteral("JSON API Forge Editor v0.5.2"));
     setWindowIcon(QIcon(QStringLiteral(":/branding/logo.png")));
     setMinimumSize(720, 480);
     resize(ForgeEditorUi::boundedSize(this, QSize(1480, 900), minimumSize()));
@@ -137,16 +138,46 @@ MainWindow::MainWindow(QWidget *parent, bool restoreLayout)
             [this](const QString &message) { showStatusMessage(message, 6000); });
     connect(m_teamWorkspace, &TeamWorkspace::statusMessage, this,
             [this](const QString &message) { showStatusMessage(message, 8000); });
+    connect(m_teamWorkspace, &TeamWorkspace::retryConnectionRequested, this, [this] {
+        if (!m_api->isConfigured()) { connectToServer(); return; }
+        m_teamWorkspace->setCapabilities({});
+        m_api->fetchCapabilities(m_currentProject);
+        m_api->fetchProjects();
+    });
 }
 
 MainWindow::~MainWindow()
 {
-    if (m_teamDock != nullptr) {
-        QObject::disconnect(m_teamDock, nullptr, this, nullptr);
-    }
+    // Child models can emit selection/visibility signals during QWidget teardown,
+    // before QObject disconnects receivers. Stop callbacks while our type is valid.
+    for (auto *child : findChildren<QObject *>()) { QObject::disconnect(child, nullptr, this, nullptr); }
+    if (m_api != nullptr) { m_api->cancelActiveRequests(); }
     if (m_pluginManager != nullptr) {
         m_pluginManager->unloadAll();
         delete m_pluginManager;
+    }
+}
+
+void MainWindow::showVisualPreview()
+{
+    const QJsonObject document{
+        {QStringLiteral("name"), QStringLiteral("Inventory API")},
+        {QStringLiteral("resources"), QJsonArray{QJsonObject{
+            {QStringLiteral("path"), QStringLiteral("products")}, {QStringLiteral("database"), QStringLiteral("primary")},
+            {QStringLiteral("table"), QStringLiteral("products")}, {QStringLiteral("auto_create"), false},
+            {QStringLiteral("columns"), QJsonObject{{QStringLiteral("name"), QStringLiteral("TEXT")}, {QStringLiteral("price"), QStringLiteral("REAL")}}},
+            {QStringLiteral("allowed_actions"), QJsonArray{QStringLiteral("list"), QStringLiteral("read")}}}}},
+        {QStringLiteral("data_sources"), QJsonArray{QJsonObject{
+            {QStringLiteral("name"), QStringLiteral("store-info")}, {QStringLiteral("type"), QStringLiteral("static")},
+            {QStringLiteral("public"), true}, {QStringLiteral("data"), QJsonObject{{QStringLiteral("currency"), QStringLiteral("USD")}}}}}}
+    };
+    loadDocument(QStringLiteral("config/inventory.json"), DocumentCodec::prettyJson(document), {});
+    showVisualMode();
+    auto *tree = m_visualDesigner->findChild<QTreeWidget *>(QStringLiteral("designerCanvas"));
+    for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+        if (tree->topLevelItem(index)->text(0) == QStringLiteral("resources")) {
+            tree->setCurrentItem(tree->topLevelItem(index)->child(0)); break;
+        }
     }
 }
 
@@ -201,8 +232,9 @@ void MainWindow::buildInterface()
     brandLayout->addWidget(brandText);
     brandLayout->addStretch();
     sideLayout->addWidget(brandRow);
-
-
+    auto *version = new QLabel(QStringLiteral("v0.5.2"), m_sidebar);
+    version->setObjectName(QStringLiteral("editorVersion"));
+    sideLayout->addWidget(version);
     sideLayout->addWidget(eyebrow(QStringLiteral("PROJECTS"), m_sidebar));
     m_projects = new QListWidget(m_sidebar);
     m_projects->setObjectName(QStringLiteral("projectList"));
@@ -300,6 +332,10 @@ void MainWindow::buildInterface()
 
     m_workspace = new QStackedWidget(content);
     m_workspace->setObjectName(QStringLiteral("workspaceStack"));
+    // Hidden authoring pages must not force the bottom chat dock to give up
+    // its message list on compact windows. The pages scroll independently.
+    m_workspace->setMinimumHeight(0);
+    m_workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     auto *welcomeScroll = new QScrollArea(m_workspace);
     welcomeScroll->setWidgetResizable(true);
     welcomeScroll->setFrameShape(QFrame::NoFrame);
@@ -1303,7 +1339,30 @@ void MainWindow::toggleSidebar()
     }
     m_sidebarAutoCollapsed = false;
     m_sidebarExpanded = !m_sidebarExpanded;
-    applySidebarState();
+    const int startWidth = m_sidebar->isVisible() ? m_sidebar->width() : 0;
+    if (m_sidebarAnimation != nullptr) {
+        m_sidebarAnimation->stop();
+        m_sidebarAnimation->deleteLater();
+    }
+    m_sidebar->setMinimumWidth(0);
+    m_sidebar->setMaximumWidth(qMax(1, startWidth));
+    m_sidebar->show();
+    m_rootSplitter->setHandleWidth(0);
+    m_rootSplitter->handle(1)->hide();
+    m_sidebarButton->setChecked(m_sidebarExpanded);
+    auto *animation = new QVariantAnimation(this);
+    m_sidebarAnimation = animation;
+    animation->setDuration(220);
+    animation->setStartValue(startWidth);
+    animation->setEndValue(m_sidebarExpanded ? m_sidebarWidth : 0);
+    animation->setEasingCurve(QEasingCurve::OutCubic);
+    connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+        const int sidebarWidth = value.toInt();
+        m_sidebar->setMaximumWidth(sidebarWidth);
+        m_rootSplitter->setSizes({sidebarWidth, qMax(1, m_rootSplitter->width() - sidebarWidth)});
+    });
+    connect(animation, &QVariantAnimation::finished, this, &MainWindow::applySidebarState);
+    animation->start();
 }
 
 void MainWindow::updateConnectionActions()
@@ -1353,6 +1412,8 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_connectionLabel->style()->polish(m_connectionLabel);
         m_teamWorkspace->setProject(m_currentProject);
         m_api->fetchCapabilities(m_currentProject);
+        // Project discovery must not depend on a server-wide capability grant.
+        m_api->fetchProjects();
         updateConnectionActions();
         m_teamDock->show();
         arrangeTeamDock();
@@ -1373,7 +1434,6 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_teamWorkspace->setCapabilities(payload);
         updatePolicyPanel();
         m_createAction->setEnabled(m_policyCreate && !m_policyReadOnly);
-        m_api->fetchProjects();
         m_teamWorkspace->refreshAll();
         return;
     }
@@ -1502,6 +1562,15 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
     }
     if (operation.startsWith(QStringLiteral("team-")) && statusCode != 401) {
         return; // Team Workspace displays its own errors without interrupting editing.
+    }
+    if ((operation == QStringLiteral("capabilities") || operation.startsWith(QStringLiteral("capabilities:")))
+        && statusCode != 401) {
+        if (operation.startsWith(QStringLiteral("capabilities:"))
+            && operation != QStringLiteral("capabilities:%1").arg(m_currentProject)) { return; }
+        if (operation == QStringLiteral("capabilities") && !m_currentProject.isEmpty()) { return; }
+        m_teamWorkspace->setAvailabilityError(QStringLiteral("Could not load server features (HTTP %1): %2").arg(statusCode).arg(message));
+        showStatusMessage(QStringLiteral("Server features could not be loaded. Use Retry in Spaces & calls."), 7000);
+        return;
     }
     if (operation == QStringLiteral("auth-setup") && (outcomeUncertain || statusCode == 409)) {
         m_api->clearSession();
@@ -1703,7 +1772,7 @@ void MainWindow::setDirty(bool dirty)
     if (dirty) { ++m_editGeneration; }
     m_dirty = dirty;
     setWindowModified(dirty);
-    const auto title = QStringLiteral("JSON API Forge Editor[*]");
+    const auto title = QStringLiteral("JSON API Forge Editor v0.5.2[*]");
     setWindowTitle(title);
     if (!m_currentDocument.isEmpty()) {
         auto text = QStringLiteral("%1  /  %2  ·  %3").arg(currentModeName(m_remoteMode), m_currentProject, m_currentDocument);
@@ -1953,7 +2022,7 @@ void MainWindow::showAbout()
     box.setWindowTitle(QStringLiteral("About JSON API Forge Editor"));
     box.setIconPixmap(QPixmap(QStringLiteral(":/branding/logo.png")).scaled(112, 112, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     box.setText(QStringLiteral(
-        "<h2>JSON API Forge Editor 0.5.1</h2><p>An Amber Gold + Graphite Gray C++20 / Qt 6 workspace for local and secure remote Forge projects.</p>"
+        "<h2>JSON API Forge Editor 0.5.2</h2><p>An Amber Gold + Graphite Gray C++20 / Qt 6 workspace for local and secure remote Forge projects.</p>"
         "<p>Code + graphs + visual configuration · database explorer · ranked team spaces · notes · WebRTC calls · optimistic concurrency · validated atomic saves.</p>"));
     box.exec();
 }

@@ -119,8 +119,8 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
 {
     setObjectName(QStringLiteral("teamWorkspace"));
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(10);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(6);
     auto *header = new QWidget(this);
     header->setObjectName(QStringLiteral("teamHeader"));
     auto *headerLayout = new QHBoxLayout(header);
@@ -171,7 +171,8 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
         scroll->setFrameShape(QFrame::NoFrame);
         tabs->addTab(scroll, title);
     };
-    addScrollableTab(spaces, QStringLiteral("Spaces && calls"));
+    // Keep the conversation composer anchored; each list scrolls independently.
+    tabs->addTab(spaces, QStringLiteral("Spaces && calls"));
     addScrollableTab(database, QStringLiteral("Database"));
     addScrollableTab(team, QStringLiteral("People && roles"));
     addScrollableTab(notes, QStringLiteral("Notes"));
@@ -254,10 +255,28 @@ void TeamWorkspace::buildTeamTab(QWidget *tab)
 
 void TeamWorkspace::buildSpacesTab(QWidget *tab)
 {
-    auto *layout = new QHBoxLayout(tab);
+    auto *outer = new QVBoxLayout(tab);
+    outer->setContentsMargins(8, 8, 8, 8);
+    outer->setSpacing(6);
+    auto *availability = new QHBoxLayout;
+    m_spaceAvailability = new QLabel(tab);
+    m_spaceAvailability->setObjectName(QStringLiteral("spaceAvailability"));
+    m_spaceAvailability->setTextFormat(Qt::PlainText);
+    m_spaceAvailability->setWordWrap(true);
+    availability->addWidget(m_spaceAvailability, 1);
+    m_retryConnection = new QPushButton(QStringLiteral("Retry"), tab);
+    m_retryConnection->setObjectName(QStringLiteral("retrySpacesConnection"));
+    availability->addWidget(m_retryConnection);
+    connect(m_retryConnection, &QPushButton::clicked, this, &TeamWorkspace::retryConnectionRequested);
+    outer->addLayout(availability);
+    auto *layout = new QHBoxLayout;
+    outer->addLayout(layout, 1);
     auto *left = new QWidget(tab);
-    left->setMaximumWidth(290);
+    left->setMinimumWidth(170);
+    left->setMaximumWidth(240);
     auto *leftLayout = new QVBoxLayout(left);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(5);
     auto *areaButtons = new QHBoxLayout;
     auto *refresh = actionButton(QStringLiteral("Refresh"), left, QStringLiteral("areas.read"));
     auto *create = actionButton(QStringLiteral("New area"), left, QStringLiteral("areas.manage"));
@@ -266,26 +285,27 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     leftLayout->addLayout(areaButtons);
     m_areas = new QListWidget(left);
     m_areas->setObjectName(QStringLiteral("areaList"));
+    m_areas->setMinimumHeight(0);
+    m_areas->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     leftLayout->addWidget(m_areas, 1);
     m_spaceStatus = new QLabel(QStringLiteral("Sign in to load team spaces."), left);
     m_spaceStatus->setObjectName(QStringLiteral("spaceStatus"));
     m_spaceStatus->setWordWrap(true);
     leftLayout->addWidget(m_spaceStatus);
-    auto *callLabel = new QLabel(
-        QStringLiteral("Calls use one-time tickets. Media is WebRTC peer-to-peer; Forge stores no audio/video."), left);
-    callLabel->setObjectName(QStringLiteral("policyCard"));
-    callLabel->setWordWrap(true);
-    leftLayout->addWidget(callLabel);
     auto *callButtons = new QHBoxLayout;
     auto *audio = actionButton(QStringLiteral("Audio"), left, QStringLiteral("calls.start"), true);
     auto *video = actionButton(QStringLiteral("Video"), left, QStringLiteral("calls.start"), true);
     callButtons->addWidget(audio);
     callButtons->addWidget(video);
+    audio->setToolTip(QStringLiteral("Start an audio call in the selected space"));
+    video->setToolTip(QStringLiteral("Start a video call in the selected space"));
     leftLayout->addLayout(callButtons);
     layout->addWidget(left);
 
     auto *right = new QWidget(tab);
     auto *rightLayout = new QVBoxLayout(right);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(5);
     m_messages = new QTreeWidget(right);
     m_messages->setObjectName(QStringLiteral("messageList"));
     m_messages->setWordWrap(true);
@@ -295,13 +315,16 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
         {QStringLiteral("When"), QStringLiteral("Member"), QStringLiteral("Message")});
     m_messages->setRootIsDecorated(false);
     m_messages->setAlternatingRowColors(true);
+    m_messages->setMinimumHeight(0);
+    m_messages->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     m_messages->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_messages->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     m_messages->header()->setSectionResizeMode(2, QHeaderView::Stretch);
     rightLayout->addWidget(m_messages, 1);
     auto *attachmentHeader = new QHBoxLayout;
-    auto *attachmentLabel = new QLabel(QStringLiteral("Shared files"), right);
-    attachmentLabel->setObjectName(QStringLiteral("panelEyebrow"));
+    auto *attachmentLabel = new QPushButton(QStringLiteral("Shared files ▸"), right);
+    attachmentLabel->setCheckable(true);
+    attachmentLabel->setObjectName(QStringLiteral("toggleSharedFiles"));
     auto *upload = actionButton(QStringLiteral("Upload…"), right, QStringLiteral("attachments.write"), true);
     auto *download = actionButton(QStringLiteral("Download…"), right, QStringLiteral("attachments.read"), true);
     auto *refreshFiles = actionButton(QStringLiteral("Reload"), right, QStringLiteral("attachments.read"), true);
@@ -319,8 +342,15 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     m_attachments->setRootIsDecorated(false);
     m_attachments->setAlternatingRowColors(true);
     m_attachments->setMaximumHeight(190);
+    m_attachments->setMinimumHeight(0);
+    m_attachments->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     m_attachments->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     rightLayout->addWidget(m_attachments);
+    m_attachments->hide();
+    connect(attachmentLabel, &QPushButton::toggled, m_attachments, &QWidget::setVisible);
+    connect(attachmentLabel, &QPushButton::toggled, attachmentLabel, [attachmentLabel](bool expanded) {
+        attachmentLabel->setText(expanded ? QStringLiteral("Shared files ▾") : QStringLiteral("Shared files ▸"));
+    });
     auto *composer = new QHBoxLayout;
     m_message = new QLineEdit(right);
     m_message->setObjectName(QStringLiteral("messageComposer"));
@@ -472,6 +502,9 @@ void TeamWorkspace::buildAuditTab(QWidget *tab)
 
 void TeamWorkspace::setCapabilities(const QJsonObject &capabilities)
 {
+    m_capabilitiesLoaded = !capabilities.isEmpty();
+    m_collaborationAdvertised = capabilities.contains(QStringLiteral("collaboration"));
+    m_availabilityError.clear();
     m_permissions.clear();
     for (const auto &permission : capabilities.value(QStringLiteral("permissions")).toArray()) {
         m_permissions.insert(permission.toString());
@@ -486,6 +519,12 @@ void TeamWorkspace::setCapabilities(const QJsonObject &capabilities)
     const auto advertisedLimit = static_cast<qint64>(
         capabilities.value(QStringLiteral("max_attachment_bytes")).toDouble(16.0 * 1024.0 * 1024.0));
     m_maxAttachmentBytes = static_cast<qsizetype>(qBound<qint64>(1, advertisedLimit, 512LL * 1024LL * 1024LL));
+    updateActions();
+}
+
+void TeamWorkspace::setAvailabilityError(const QString &message)
+{
+    m_availabilityError = message;
     updateActions();
 }
 
@@ -518,6 +557,14 @@ void TeamWorkspace::updateActions()
             if (button->property("forgeNeedsArea").toBool()) { enabled = enabled && areaSelected; }
             if (permission.startsWith(QStringLiteral("calls."))) { enabled = enabled && m_callsEnabled; }
             button->setEnabled(enabled);
+            if (!enabled) {
+                button->setToolTip(!m_api->isConfigured() ? QStringLiteral("Sign in to use this action")
+                    : !m_capabilitiesLoaded ? QStringLiteral("Server features are still unavailable. Use Retry.")
+                    : !permits(permission) ? QStringLiteral("Your server role does not grant %1 in this project").arg(permission)
+                    : permission.startsWith(QStringLiteral("calls.")) && !m_callsEnabled ? QStringLiteral("Calls are disabled by the server")
+                    : button->property("forgeNeedsArea").toBool() && !areaSelected ? QStringLiteral("Select a space first")
+                    : QStringLiteral("Collaboration is disabled by the server"));
+            } else { button->setToolTip(QString()); }
         }
     }
     m_sendButton->setEnabled(areaSelected && permits(QStringLiteral("messages.write")) && m_pendingMessageArea.isEmpty());
@@ -526,7 +573,7 @@ void TeamWorkspace::updateActions()
     m_noteTitle->setEnabled(collaboration && permits(QStringLiteral("notes.write")));
     m_noteBody->setReadOnly(!collaboration || !permits(QStringLiteral("notes.write")));
     const int previousTab = m_tabs->currentIndex();
-    m_tabs->setTabEnabled(0, collaboration);
+    m_tabs->setTabEnabled(0, true);
     m_tabs->setTabEnabled(1, m_api->isConfigured() && m_databaseEnabled && !m_project.isEmpty());
     m_tabs->setTabEnabled(2, permits(QStringLiteral("members.read")) || permits(QStringLiteral("roles.read")));
     m_tabs->setTabEnabled(3, collaboration && (permits(QStringLiteral("notes.read")) || permits(QStringLiteral("notes.write"))));
@@ -535,6 +582,22 @@ void TeamWorkspace::updateActions()
     else if (!m_api->isConfigured()) { m_tabs->setCurrentIndex(0); }
     m_projectLabel->setText(m_project.isEmpty() ? QStringLiteral("SERVER-WIDE") : QStringLiteral("PROJECT · %1").arg(m_project));
     m_projectLabel->setVisible(m_api->isConfigured());
+    QString availability;
+    if (!m_api->isConfigured()) { availability = QStringLiteral("Sign in to use spaces, messages and calls."); }
+    else if (!m_availabilityError.isEmpty()) { availability = m_availabilityError; }
+    else if (!m_capabilitiesLoaded) { availability = QStringLiteral("Loading server features and project access…"); }
+    else if (!m_collaborationAdvertised) { availability = QStringLiteral("This server does not advertise Spaces & calls. Update the Forge server to a version with collaboration support."); }
+    else if (!m_collaborationEnabled) {
+        availability = permits(QStringLiteral("areas.read"))
+            ? QStringLiteral("Collaboration is disabled on the server. Enable EDITOR_COLLABORATION_ENABLED and restart the server.")
+            : QStringLiteral("Choose an accessible project. Your role does not grant areas.read in the current scope.");
+    } else if (!m_callsEnabled && permits(QStringLiteral("calls.join"))) {
+        availability = QStringLiteral("Spaces are ready. Calls are disabled on the server (EDITOR_CALLS_ENABLED).");
+    }
+    m_spaceAvailability->setText(availability);
+    m_spaceAvailability->setVisible(!availability.isEmpty());
+    m_retryConnection->setVisible(!availability.isEmpty());
+    m_retryConnection->setText(m_api->isConfigured() ? QStringLiteral("Retry") : QStringLiteral("Sign in…"));
     if (!m_api->isConfigured()) {
         m_spaceStatus->setText(QStringLiteral("Sign in to load team spaces."));
     } else if (!m_collaborationEnabled) {
@@ -606,6 +669,9 @@ void TeamWorkspace::reset()
     m_databaseEnabled = false;
     m_collaborationEnabled = false;
     m_callsEnabled = false;
+    m_capabilitiesLoaded = false;
+    m_collaborationAdvertised = false;
+    m_availabilityError.clear();
     m_permissions.clear();
     m_messageDrafts.clear();
     m_selectedArea.clear();

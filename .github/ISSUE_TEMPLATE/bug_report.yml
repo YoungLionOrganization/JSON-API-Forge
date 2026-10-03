@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Editor version
-      placeholder: 0.5.1
+      placeholder: 0.5.2
     validations:
       required: true
   - type: input
@@ -26,7 +26,7 @@ body:
     attributes:
       label: Build or artifact
       description: State whether this was a local build, portable ZIP, Qt IFW RUN/EXE/DMG, and include the target architecture.
-      placeholder: JSON-API-Forge-Editor-v0.5.1-windows-x64.zip
+      placeholder: JSON-API-Forge-Editor-v0.5.2-windows-x64.zip
     validations:
       required: true
   - type: textarea

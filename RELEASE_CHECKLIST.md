@@ -1,9 +1,9 @@
-# JSON API Forge Editor v0.5.1 release checklist
+# JSON API Forge Editor v0.5.2 release checklist
 
 ## Source
 
 - [ ] The branch contains Editor source/assets/packaging only.
-- [ ] CMake, VERSION, README, EDITOR and release metadata identify 0.5.1.
+- [ ] CMake, VERSION, README, EDITOR and release metadata identify 0.5.2.
 - [ ] The full icon and transparent in-app mark render correctly.
 - [ ] `python scripts/check_manifest.py` passes.
 
@@ -14,7 +14,7 @@
 - [ ] Passwords/setup tokens/sessions are never persisted.
 - [ ] Plugin ZIP traversal, symlink, collision, size/ratio, CRC, digest, API and explicit-enable checks pass.
 - [ ] Remote roles, database browsing, file sharing and calls are verified
-      against a hardened v0.5.1 server.
+      against a hardened v0.5.2 server.
 
 ## Build and packaging
 
@@ -33,4 +33,4 @@
 
 - [ ] Download and inspect the Actions artifacts.
 - [ ] Complete platform signing/notarization where required.
-- [ ] Attach portable ZIPs, installers and checksums to v0.5.1.
+- [ ] Attach portable ZIPs, installers and checksums to v0.5.2.

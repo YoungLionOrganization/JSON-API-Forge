@@ -1,5 +1,13 @@
 # Editor changelog
 
+## [0.5.2] — 2026-10-04
+
+- Added an interruptible sidebar animation that resizes the document workspace along with navigation.
+- Kept Spaces & calls accessible during feature loading and server errors, with explicit reasons and a retry/sign-in action. Project discovery now runs independently of capability requests.
+- Anchored the chat composer on compact windows and made shared files collapsible.
+- Rebuilt Visual with searchable components, a recursive document outline, typed properties, structured JSON editing, field/item creation and removal, duplicate/reorder actions and bounded undo/redo history.
+- Displayed v0.5.2 in the window title and synchronized application, installer, release artifact and Windows executable metadata.
+
 ## Editor fixes — 2026-10-03 (0.5.1)
 
 - Restored permission-aware team startup, project-scoped member capabilities and profile editing; added a native integration test against the canonical server.

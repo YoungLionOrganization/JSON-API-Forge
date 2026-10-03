@@ -6,7 +6,7 @@ authors:
   - family-names: "Qurbanzadə"
     given-names: "Cavanşir"
     alias: "Cavanshirpro"
-version: "0.5.1"
+version: "0.5.2"
 license: "LicenseRef-JAF-SASH-1.1"
 repository-code: "https://github.com/YoungLionOrganization/JSON-API-Forge"
 url: "https://github.com/YoungLionOrganization/JSON-API-Forge"

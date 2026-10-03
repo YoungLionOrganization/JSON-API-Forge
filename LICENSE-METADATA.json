@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "JSON API Forge",
-  "product_version": "0.5.1",
+  "product_version": "0.5.2",
   "license_name": "JSON API Forge Source-Available Self-Host License 1.1",
   "license_version": "1.1",
   "spdx_license_id": "LicenseRef-JAF-SASH-1.1",

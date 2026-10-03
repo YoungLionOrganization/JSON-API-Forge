@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
 {
     QApplication application(argc, argv);
     application.setApplicationDisplayName(QStringLiteral("JSON API Forge Editor"));
-    application.setApplicationVersion(QStringLiteral("0.5.1"));
+    application.setApplicationVersion(QStringLiteral("0.5.2"));
     application.setWindowIcon(QIcon(QStringLiteral(":/branding/logo.png")));
     application.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
@@ -39,6 +39,9 @@ int main(int argc, char *argv[])
     const QCommandLineOption teamPreviewOption(QStringList{QStringLiteral("team-preview")},
                                                 QStringLiteral("Open the server Team Workspace preview."));
     parser.addOption(teamPreviewOption);
+    const QCommandLineOption visualPreviewOption(QStringList{QStringLiteral("visual-preview")},
+                                                  QStringLiteral("Open the built-in visual workspace preview."));
+    parser.addOption(visualPreviewOption);
     parser.process(application);
 
     const auto screenshotPath = parser.value(screenshotOption);
@@ -68,6 +71,7 @@ int main(int argc, char *argv[])
     if (parser.isSet(teamPreviewOption)) {
         window.showTeamPreview();
     }
+    if (parser.isSet(visualPreviewOption)) { window.showVisualPreview(); }
     window.setWindowOpacity(renderingPreview ? 1.0 : 0.0);
     window.show();
     if (renderingPreview) {

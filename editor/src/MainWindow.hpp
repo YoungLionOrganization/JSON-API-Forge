@@ -15,6 +15,7 @@ class QListWidget;
 class NodeGraphEditor;
 class QProgressBar;
 class QPropertyAnimation;
+class QVariantAnimation;
 class QResizeEvent;
 class PythonSdkPanel;
 class QStackedWidget;
@@ -33,6 +34,7 @@ public:
     ~MainWindow() override;
     void showGraphPreview();
     void showTeamPreview();
+    void showVisualPreview();
 
     void addPaletteComponent(const QString &label, const QString &collection, const QJsonObject &documentTemplate) override;
     void addGraphNodeType(const QString &label, const QString &type, const QJsonObject &defaultProperties) override;
@@ -122,7 +124,7 @@ private:
     PythonSdkPanel *m_pythonPanel = nullptr;
     QDockWidget *m_teamDock = nullptr;
     TeamWorkspace *m_teamWorkspace = nullptr;
-    QPropertyAnimation *m_sidebarAnimation = nullptr;
+    QVariantAnimation *m_sidebarAnimation = nullptr;
 
     QAction *m_saveAction = nullptr;
     QAction *m_validateAction = nullptr;

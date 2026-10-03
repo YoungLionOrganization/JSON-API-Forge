@@ -27,11 +27,13 @@ public:
     explicit TeamWorkspace(ApiClient *api, QWidget *parent = nullptr);
     void setProject(const QString &project);
     void setCapabilities(const QJsonObject &capabilities);
+    void setAvailabilityError(const QString &message);
     void refreshAll();
     void reset();
 
 signals:
     void statusMessage(const QString &message);
+    void retryConnectionRequested();
 
 private slots:
     void handleJson(const QString &operation, const QJsonObject &payload);
@@ -85,6 +87,8 @@ private:
     QTimer *m_poll = nullptr;
     QTabWidget *m_tabs = nullptr;
     QLabel *m_spaceStatus = nullptr;
+    QLabel *m_spaceAvailability = nullptr;
+    QPushButton *m_retryConnection = nullptr;
     QLabel *m_feedback = nullptr;
     QPushButton *m_sendButton = nullptr;
     QPushButton *m_noteSaveButton = nullptr;
@@ -110,5 +114,8 @@ private:
     bool m_databaseEnabled = false;
     bool m_collaborationEnabled = false;
     bool m_callsEnabled = false;
+    bool m_capabilitiesLoaded = false;
+    bool m_collaborationAdvertised = false;
+    QString m_availabilityError;
     int m_rank = 0;
 };

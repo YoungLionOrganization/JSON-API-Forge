@@ -71,14 +71,14 @@ function Assert-Files {
 }
 try {
     Get-Command git -CommandType Application -ErrorAction Stop | Out-Null
-    Write-Host 'JSON API Forge v0.5.1 - Editor branch uploader'
+    Write-Host 'JSON API Forge v0.5.2 - Editor branch uploader'
     Write-Host ('Repository: ' + $repo)
     Write-Host 'This uploads this Editor source folder to refs/heads/Editor.'
     Write-Host 'The source folder is read only. Uploading uses a temporary repository.'
     foreach ($spec in $specs) {
         $source = Get-Source $spec.Folder
         Write-Host ('Checking ' + $spec.Branch + ': ' + $source)
-        if ([IO.File]::ReadAllText((Join-Path $source 'VERSION')).Trim() -ne '0.5.1') { throw "Wrong VERSION in $source" }
+        if ([IO.File]::ReadAllText((Join-Path $source 'VERSION')).Trim() -ne '0.5.2') { throw "Wrong VERSION in $source" }
         if (-not (Test-Path -LiteralPath (Join-Path $source $spec.Marker))) { throw "Missing component: $($spec.Marker) in $source" }
         $entries = @(Read-Manifest $source)
         Assert-Files $source $entries
@@ -129,7 +129,7 @@ try {
         Invoke-Git -GitArgs @('fetch','--no-tags',$repo,'refs/heads/Editor')
         $parent = ((Invoke-Git -GitArgs @('rev-parse','FETCH_HEAD')) -join '').Trim()
         $tree = ((Invoke-Git -GitArgs @('write-tree')) -join '').Trim()
-        $commit = ((Invoke-Git -GitArgs @('-c','commit.gpgsign=false','commit-tree',$tree,'-p',$parent,'-m','Fix Editor v0.5.1 workflow and installer layout')) -join '').Trim()
+        $commit = ((Invoke-Git -GitArgs @('-c','commit.gpgsign=false','commit-tree',$tree,'-p',$parent,'-m','Fix Editor v0.5.2 workflow and installer layout')) -join '').Trim()
         Invoke-Git -GitArgs @('update-ref','refs/heads/Editor',$commit)
         $spec.Commit = ((Invoke-Git -GitArgs @('rev-parse','HEAD')) -join '').Trim()
         $spec.Stage = $stage

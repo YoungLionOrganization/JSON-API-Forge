@@ -2,8 +2,8 @@
 <Package>
     <DisplayName>JSON API Forge Editor</DisplayName>
     <Description>Policy-aware visual and code editor for JSON API Forge.</Description>
-    <Version>0.5.1-1</Version>
-    <ReleaseDate>2026-09-06</ReleaseDate>
+    <Version>0.5.2-1</Version>
+    <ReleaseDate>2026-10-04</ReleaseDate>
     <Name>dev.jsonapiforge.editor</Name>
     <Licenses>
         <License name="JSON API Forge Source-Available License" file="license.txt" />

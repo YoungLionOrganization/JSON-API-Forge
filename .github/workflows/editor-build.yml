@@ -69,10 +69,10 @@ jobs:
           workflows = sorted(path.name for path in (root / ".github/workflows").glob("*.yml"))
           if workflows != ["editor-build.yml", "editor-codeql.yml"]:
               raise SystemExit(f"unexpected Editor workflows: {workflows}")
-          if (root / "VERSION").read_text().strip() != "0.5.1":
+          if (root / "VERSION").read_text().strip() != "0.5.2":
               raise SystemExit("root VERSION mismatch")
           cmake = (root / "editor/CMakeLists.txt").read_text()
-          if not re.search(r"project\(JSONAPIForgeEditor VERSION 0\.5\.1", cmake):
+          if not re.search(r"project\(JSONAPIForgeEditor VERSION 0\.5\.2", cmake):
               raise SystemExit("Editor CMake version mismatch")
           required = [
               "editor/src/MainWindow.cpp",
@@ -123,7 +123,7 @@ jobs:
               root / "editor/packaging/qtifw/packages/dev.jsonapiforge.editor/meta/package.xml"
           ).getroot()
           for ifw_config in ifw_configs:
-              if ifw_config.tag != "Installer" or ifw_config.findtext("Version") != "0.5.1":
+              if ifw_config.tag != "Installer" or ifw_config.findtext("Version") != "0.5.2":
                   raise SystemExit("Qt IFW configuration identity/version mismatch")
               if not ifw_config.findtext("InstallerWindowIcon"):
                   raise SystemExit("Qt IFW window icon must be present")
@@ -131,7 +131,7 @@ jobs:
                   raise SystemExit("Large QWizard pixmaps must not be added to the installer UI")
           if ifw_package.findtext("Name") != "dev.jsonapiforge.editor":
               raise SystemExit("Qt IFW component identity mismatch")
-          if not (ifw_package.findtext("Version") or "").startswith("0.5.1-"):
+          if not (ifw_package.findtext("Version") or "").startswith("0.5.2-"):
               raise SystemExit("Qt IFW component version mismatch")
           licenses = ifw_package.findall("./Licenses/License")
           if len(licenses) != 1 or licenses[0].attrib.get("file") != "license.txt":
@@ -383,9 +383,13 @@ jobs:
             --window-size 1024x640 \
             --screenshot "artifacts/editor-packaged-${{ matrix.artifact }}.png"
           test -s "artifacts/editor-packaged-${{ matrix.artifact }}.png"
-          archive="JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}.zip"
+          QT_QPA_PLATFORM=offscreen stage/json-api-forge-editor \
+            --window-size 1024x640 --visual-preview \
+            --screenshot "artifacts/editor-visual-${{ matrix.artifact }}.png"
+          test -s "artifacts/editor-visual-${{ matrix.artifact }}.png"
+          archive="JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}.zip"
           (cd stage && zip -9 -r "../artifacts/$archive" .)
-          installer="JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}-setup.run"
+          installer="JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}-setup.run"
           bash editor/packaging/qtifw/build-installer.sh stage "artifacts/$installer" linux
           chmod 0755 "artifacts/$installer"
           file "artifacts/$installer" | grep -E 'executable|ELF'
@@ -420,14 +424,17 @@ jobs:
           if ($count -lt 12) { throw "Portable application is incomplete: only $count files" }
           $screenshot = Join-Path (Resolve-Path artifacts) "editor-packaged-${{ matrix.artifact }}.png"
           $env:QT_QPA_PLATFORM = "offscreen"
-          $process = Start-Process -FilePath $exe.FullName -ArgumentList @("--window-size", "1024x640", "--screenshot", $screenshot) -Wait -PassThru
+          $process = Start-Process -WindowStyle Hidden -FilePath $exe.FullName -ArgumentList @("--window-size", "1024x640", "--screenshot", $screenshot) -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Packaged Editor exited with code $($process.ExitCode)" }
           if (-not (Test-Path $screenshot) -or (Get-Item $screenshot).Length -eq 0) {
             throw "Packaged Editor screenshot smoke test failed"
           }
-          $archive = "JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}.zip"
+          $visualScreenshot = Join-Path (Resolve-Path artifacts) "editor-visual-${{ matrix.artifact }}.png"
+          $visualProcess = Start-Process -WindowStyle Hidden -FilePath $exe.FullName -ArgumentList @('--window-size', '1024x640', '--visual-preview', '--screenshot', ('"' + $visualScreenshot + '"')) -Wait -PassThru
+          if ($visualProcess.ExitCode -ne 0 -or -not (Test-Path $visualScreenshot -PathType Leaf)) { throw "Packaged Visual smoke test failed" }
+          $archive = "JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}.zip"
           Compress-Archive -Path stage/* -DestinationPath "artifacts/$archive"
-          $outPath = Join-Path (Resolve-Path artifacts) "JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}-setup.exe"
+          $outPath = Join-Path (Resolve-Path artifacts) "JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}-setup.exe"
           ./editor/packaging/qtifw/build-installer.ps1 -StageDir stage -OutputFile $outPath
           $installer = Split-Path -Leaf $outPath
           if ((Get-Item "artifacts/$installer").Length -lt 1000000) { throw "Qt IFW installer appears truncated" }
@@ -437,7 +444,7 @@ jobs:
           $installedExe = Join-Path $installed "bin/JSON-API-Forge-Editor.exe"
           if (-not (Test-Path $installedExe -PathType Leaf)) { throw "Installer did not install the Editor" }
           $installedScreenshot = Join-Path (Resolve-Path artifacts) "editor-installed-${{ matrix.artifact }}.png"
-          $installedProcess = Start-Process -FilePath $installedExe -Wait -PassThru -ArgumentList @('--window-size', '1024x640', '--screenshot', ('"' + $installedScreenshot + '"'))
+          $installedProcess = Start-Process -WindowStyle Hidden -FilePath $installedExe -Wait -PassThru -ArgumentList @('--window-size', '1024x640', '--screenshot', ('"' + $installedScreenshot + '"'))
           if ($installedProcess.ExitCode -ne 0 -or -not (Test-Path $installedScreenshot -PathType Leaf)) { throw "Installed Editor smoke test failed" }
           foreach ($name in @($archive, $installer)) {
             $hash = (Get-FileHash "artifacts/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -465,9 +472,14 @@ jobs:
             --window-size 1024x640 \
             --screenshot "artifacts/editor-packaged-${{ matrix.artifact }}.png"
           test -s "artifacts/editor-packaged-${{ matrix.artifact }}.png"
-          archive="JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}.zip"
+          QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu \
+            "$app_path/Contents/MacOS/JSON-API-Forge-Editor" \
+            --window-size 1024x640 --visual-preview \
+            --screenshot "artifacts/editor-visual-${{ matrix.artifact }}.png"
+          test -s "artifacts/editor-visual-${{ matrix.artifact }}.png"
+          archive="JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}.zip"
           ditto -c -k --sequesterRsrc --keepParent stage "artifacts/$archive"
-          installer="JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}-setup.dmg"
+          installer="JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}-setup.dmg"
           bash editor/packaging/qtifw/build-installer.sh stage "artifacts/$installer" macos \
             2>&1 | tee "artifacts/installer-build-${{ matrix.artifact }}.log"
           mount_point="${{ runner.temp }}/editor-setup-${{ matrix.artifact }}"
@@ -495,7 +507,7 @@ jobs:
           retention-days: 14
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: JSON-API-Forge-Editor-v0.5.1-${{ matrix.artifact }}
+          name: JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 30
@@ -543,7 +555,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: JSON-API-Forge-Editor-v0.5.1-*
+          pattern: JSON-API-Forge-Editor-v0.5.2-*
           path: downloads
       - name: Verify installers and portable archives
         run: |
@@ -555,26 +567,26 @@ jobs:
           test "$(find downloads -type f \( -name '*-setup.run' -o -name '*-setup.exe' -o -name '*-setup.dmg' \) | wc -l)" -eq 6
           mkdir release-assets
           find downloads -type f \( \
-            -name 'JSON-API-Forge-Editor-v0.5.1-*.zip' -o \
-            -name 'JSON-API-Forge-Editor-v0.5.1-*-setup.run' -o \
-            -name 'JSON-API-Forge-Editor-v0.5.1-*-setup.exe' -o \
-            -name 'JSON-API-Forge-Editor-v0.5.1-*-setup.dmg' -o \
-            -name 'JSON-API-Forge-Editor-v0.5.1-*.sha256' \
+            -name 'JSON-API-Forge-Editor-v0.5.2-*.zip' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.2-*-setup.run' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.2-*-setup.exe' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.2-*-setup.dmg' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.2-*.sha256' \
           \) -exec cp {} release-assets/ \;
           test "$(find release-assets -maxdepth 1 -type f -name '*.zip' | wc -l)" -eq 6
           test "$(find release-assets -maxdepth 1 -type f \( -name '*-setup.run' -o -name '*-setup.exe' -o -name '*-setup.dmg' \) | wc -l)" -eq 6
           test "$(find release-assets -maxdepth 1 -type f -name '*.sha256' | wc -l)" -eq 12
           cp EDITOR.md RELEASE_ASSETS.md LICENSE LICENSE-FAQ.md NOTICE.md THIRD_PARTY_NOTICES.md TRADEMARK_POLICY.md AI_USAGE_POLICY.md LICENSE-HISTORY.md LICENSE-METADATA.json release-assets/
           (cd release-assets && find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*-setup.run' -o -name '*-setup.exe' -o -name '*-setup.dmg' \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          (cd release-assets && zip -9 -r ../JSON-API-Forge-Editor-v0.5.1-all-platforms.zip .)
-          sha256sum JSON-API-Forge-Editor-v0.5.1-all-platforms.zip \
-            > JSON-API-Forge-Editor-v0.5.1-all-platforms.zip.sha256
+          (cd release-assets && zip -9 -r ../JSON-API-Forge-Editor-v0.5.2-all-platforms.zip .)
+          sha256sum JSON-API-Forge-Editor-v0.5.2-all-platforms.zip \
+            > JSON-API-Forge-Editor-v0.5.2-all-platforms.zip.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: JSON-API-Forge-Editor-v0.5.1-release-assets
+          name: JSON-API-Forge-Editor-v0.5.2-release-assets
           path: |
             release-assets/*
-            JSON-API-Forge-Editor-v0.5.1-all-platforms.zip
-            JSON-API-Forge-Editor-v0.5.1-all-platforms.zip.sha256
+            JSON-API-Forge-Editor-v0.5.2-all-platforms.zip
+            JSON-API-Forge-Editor-v0.5.2-all-platforms.zip.sha256
           if-no-files-found: error
           retention-days: 30

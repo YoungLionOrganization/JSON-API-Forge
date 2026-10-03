@@ -1,11 +1,11 @@
-# JSON API Forge Editor
+# JSON API Forge Editor v0.5.2
 
 JSON API Forge Editor is a C++20/Qt 6 desktop workspace for authoring and operating Forge projects. It combines direct JSON editing, typed visual forms and an Unreal-inspired operation graph without introducing a second runtime language: the graph compiles to ordinary Forge configuration and the server still applies its normal schema, semantic and policy checks.
 
 ## Authoring modes
 
 - **Code** provides line numbers, JSON highlighting, current-line focus and direct access to every supported local or remote document.
-- **Visual** exposes resources, operations, databases and event channels as selectable, draggable components with typed and JSON property editing.
+- **Visual** provides a searchable component library (SQL resources, RPC operations, static/HTTP/file data sources and realtime channels), a recursive document outline and a typed property inspector. Edit nested values, add or remove fields/items, duplicate components with unique names, reorder arrays and undo/redo up to 30 changes. Double-click an object or array value to edit its JSON with validation before saving.
 - **Graph** provides a grid canvas with pan/zoom, marquee selection, draggable nodes, output-to-input Bézier wires, cycle/fan-in validation, automatic layout, fit-to-content and a live compiled-operation preview.
 
 The graph palette includes Request, Authorization, SQL Query, SQL Mutation, Branch, Transform, Forge Operation, Python SDK, Event and Response nodes. Native plugins can register additional node types through Plugin API v2. Branch/Transform/Event and custom plugin nodes remain explicit design nodes until a compiler exists for their semantics; compile preview reports them instead of silently dropping behavior. Graphs are stored as bounded, schema-versioned `graphs/*.forgegraph.json` documents and target one direct `config/*.json` fragment.
@@ -26,6 +26,10 @@ Use **File → New from template…** after opening a local workspace. Creation 
 | Audited Ledger Workflow | Controlled transitions and audit-oriented records |
 
 ## Local and remote workspaces
+
+The navigation sidebar animates together with the document area. The application title displays **v0.5.2**.
+
+**Spaces & calls** stays available while the server loads and when access fails. Its banner explains missing collaboration support, server-disabled features and access errors; **Retry** reloads project access and features. With a current server and an authorized account, select a space (or create one with **New area**) to enable messages and calls. The message composer stays pinned, and **Shared files** expands the file list when needed. If the banner reports an older server, update the running server from `main`; upgrading only the Editor cannot add server endpoints.
 
 Choose **File → Open local workspace…** and select a Forge repository root, its `app/` directory or one project directory. Local JSON/graph saves use `QSaveFile` atomic replacement. The Editor performs structural checks; `forge validate` remains the canonical merged-project and semantic validator.
 

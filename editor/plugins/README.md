@@ -2,7 +2,7 @@
 
 [![Desktop builds](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-build.yml/badge.svg?branch=Editor)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-build.yml?query=branch%3AEditor)
 [![CodeQL](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-codeql.yml/badge.svg?branch=Editor)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/editor-codeql.yml?query=branch%3AEditor)
-[![Version 0.5.1](https://img.shields.io/badge/version-0.5.1-D4A017)](../../VERSION)
+[![Version 0.5.2](https://img.shields.io/badge/version-0.5.2-D4A017)](../../VERSION)
 [![Qt 6.4+](https://img.shields.io/badge/Qt-6.4%2B-41CD52?logo=qt)](../../QT-CREATOR-BUILD-GUIDE.md)
 [![Source available](https://img.shields.io/badge/license-source--available-555555)](../../LICENSE)
 
@@ -55,7 +55,7 @@ host->showStatusMessage("Queue tools ready");
 
 Plugin-declared permissions are review metadata, not an operating-system sandbox. The Editor rechecks manifest/API/runtime identity and hashes the full binary before `QPluginLoader` executes it.
 
-Plugin graph nodes are preserved in the graph document and rendered on the canvas, but v0.5.1 does not grant native plugins an implicit configuration compiler. Compile preview rejects a custom/design-only node with its type name instead of silently omitting it; plugins may provide a reviewed tool action that emits ordinary Forge fragments and then runs the normal validation workflow.
+Plugin graph nodes are preserved in the graph document and rendered on the canvas, but v0.5.2 does not grant native plugins an implicit configuration compiler. Compile preview rejects a custom/design-only node with its type name instead of silently omitting it; plugins may provide a reviewed tool action that emits ordinary Forge fragments and then runs the normal validation workflow.
 
 ## Forge-backed catalog
 
@@ -81,7 +81,7 @@ Each item must contain:
 }
 ```
 
-The v0.5.1 Editor validates a maximum of 100 records/2 MiB, safe identity fields, unique plugin-version pairs, HTTPS package URLs, SHA-256 metadata and bounded permission arrays. It rejects TLS errors, redirects, URL credentials and non-loopback cleartext endpoints. The catalog UI copies the reviewed package URL but intentionally does not auto-download, install or enable native code. Downloaded packages must still be selected through the explicit ZIP import action. The `EditorPluginRegistry` project on the `exampleApps` branch is a ready Forge catalog backend.
+The v0.5.2 Editor validates a maximum of 100 records/2 MiB, safe identity fields, unique plugin-version pairs, HTTPS package URLs, SHA-256 metadata and bounded permission arrays. It rejects TLS errors, redirects, URL credentials and non-loopback cleartext endpoints. The catalog UI copies the reviewed package URL but intentionally does not auto-download, install or enable native code. Downloaded packages must still be selected through the explicit ZIP import action. The `EditorPluginRegistry` project on the `exampleApps` branch is a ready Forge catalog backend.
 
 For distribution, publish reproducible source, per-platform binaries, checksums and a cryptographic publisher signature through a trusted channel. SHA-256 proves that a reviewed file did not change; it does not prove who created it.
 

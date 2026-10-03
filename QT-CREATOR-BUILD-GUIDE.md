@@ -72,7 +72,7 @@ $exe = Get-ChildItem build/stage -Filter JSON-API-Forge-Editor.exe -Recurse | Se
 windeployqt --release --no-translations --compiler-runtime $exe.FullName
 Copy-Item EDITOR.md,LICENSE -Destination build/stage
 python editor/packaging/stage-notices.py build/stage
-Compress-Archive -Path build/stage/* -DestinationPath JSON-API-Forge-Editor-v0.5.1-windows-x64.zip
+Compress-Archive -Path build/stage/* -DestinationPath JSON-API-Forge-Editor-v0.5.2-windows-x64.zip
 ```
 
 For ARM64, run these commands from the ARM64 kit and use an architecture-appropriate output name.
@@ -85,7 +85,7 @@ bash editor/packaging/linux/bundle-qt.sh build/stage
 install -m 0755 editor/packaging/linux/launcher.sh build/stage/json-api-forge-editor
 cp EDITOR.md LICENSE build/stage/
 python editor/packaging/stage-notices.py build/stage
-(cd build/stage && zip -9 -r ../../JSON-API-Forge-Editor-v0.5.1-linux-x64.zip .)
+(cd build/stage && zip -9 -r ../../JSON-API-Forge-Editor-v0.5.2-linux-x64.zip .)
 ```
 
 On macOS, deploy the exact bundle produced by the selected kit:
@@ -94,7 +94,7 @@ On macOS, deploy the exact bundle produced by the selected kit:
 macdeployqt build/stage/JSON-API-Forge-Editor.app -always-overwrite
 cp EDITOR.md LICENSE build/stage/
 python editor/packaging/stage-notices.py build/stage
-(cd build/stage && zip -9 -r ../../JSON-API-Forge-Editor-v0.5.1-macos-arm64.zip .)
+(cd build/stage && zip -9 -r ../../JSON-API-Forge-Editor-v0.5.2-macos-arm64.zip .)
 ```
 
 Use `macos-x64` in the archive name when using an Intel kit. The executable
@@ -107,7 +107,7 @@ Ensure `binarycreator.exe` from Qt Installer Framework is on `PATH`, then run:
 ```powershell
 ./editor/packaging/qtifw/build-installer.ps1 `
   -StageDir build/stage `
-  -OutputFile JSON-API-Forge-Editor-v0.5.1-windows-x64-setup.exe
+  -OutputFile JSON-API-Forge-Editor-v0.5.2-windows-x64-setup.exe
 ```
 
 On Linux or macOS, ensure `binarycreator` is on `PATH`, deploy the Qt runtime as described by the platform workflow, and run:
@@ -115,11 +115,11 @@ On Linux or macOS, ensure `binarycreator` is on `PATH`, deploy the Qt runtime as
 ```bash
 # Linux
 bash editor/packaging/qtifw/build-installer.sh \
-  build/stage JSON-API-Forge-Editor-v0.5.1-linux-x64-setup.run linux
+  build/stage JSON-API-Forge-Editor-v0.5.2-linux-x64-setup.run linux
 
 # macOS
 bash editor/packaging/qtifw/build-installer.sh \
-  build/stage JSON-API-Forge-Editor-v0.5.1-macos-arm64-setup.dmg macos
+  build/stage JSON-API-Forge-Editor-v0.5.2-macos-arm64-setup.dmg macos
 ```
 
 The helpers consume the same Qt IFW metadata as GitHub Actions. They embed the staged application, platform icons, maintenance/uninstall tool and the repository `LICENSE`; Windows additionally receives Start Menu/Desktop shortcuts. The license is shown as an agreement during setup and is also installed with the product.

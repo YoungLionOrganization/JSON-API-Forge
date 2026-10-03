@@ -22,6 +22,8 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QPlainTextEdit>
+#include <QTabWidget>
 #include <QSettings>
 #include <QSharedPointer>
 #include <QSignalSpy>
@@ -144,6 +146,10 @@ private slots:
     void repeatedGraphModePreservesEdits();
     void openingDocumentDoesNotSerializePreviousMode();
     void visualPropertyTypesAndPalette();
+    void visualNestedEditsUndoAndReorder();
+    void visualStructuredAndNewPropertyDialogs();
+    void spacesExplainAvailabilityAndKeepComposerVisible();
+    void founderStartupRecoversCapabilityFailure();
     void cancelledProjectSelectionRestoresSelection();
     void staleDocumentResponsesAreIgnored();
     void workerRefreshRespectsPermissionsAndGlobalScope();
@@ -184,14 +190,18 @@ void EditorUiTests::sidebarReclaimsSpace()
     const int original = sidebar->width();
     QVERIFY(original >= 220);
     window.toggleSidebar();
+    QTest::qWait(65);
+    QVERIFY(sidebar->isVisible());
+    QVERIFY(sidebar->width() > 0 && sidebar->width() < original);
+    QVERIFY(splitter->widget(1)->width() > splitter->width() - original);
     QVERIFY(waitUntil([&] { return sidebar->isHidden(); }));
     QVERIFY(waitUntil([&] { return (splitter->widget(1)->geometry()) == (splitter->contentsRect()); }));
     QCOMPARE(splitter->widget(1)->geometry(), splitter->contentsRect());
     window.toggleSidebar();
-    QVERIFY(waitUntil([&] { return sidebar->isVisible(); }));
+    QVERIFY(waitUntil([&] { return sidebar->isVisible() && sidebar->width() == original; }));
     QCOMPARE(sidebar->width(), original);
     for (int count = 0; count < 8; ++count) { window.toggleSidebar(); }
-    QVERIFY(sidebar->isVisible());
+    QVERIFY(waitUntil([&] { return sidebar->isVisible() && sidebar->width() == original; }));
     QCOMPARE(sidebar->width(), original);
 }
 
@@ -206,6 +216,7 @@ void EditorUiTests::sidebarResponsivePreference()
     window.resize(1280, 800);
     QVERIFY(waitUntil([&] { return window.m_sidebar->isVisible(); }));
     window.toggleSidebar();
+    QVERIFY(waitUntil([&] { return window.m_sidebar->isHidden(); }));
     window.resize(820, 640);
     window.resize(1280, 800);
     QVERIFY(window.m_sidebar->isHidden());
@@ -311,6 +322,174 @@ void EditorUiTests::visualPropertyTypesAndPalette()
     designer.setDocument(QJsonObject{});
     palette->itemDoubleClicked(palette->item(0));
     QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().size(), 1);
+}
+
+void EditorUiTests::visualNestedEditsUndoAndReorder()
+{
+    VisualDesigner designer;
+    const QJsonObject original{{QStringLiteral("resources"), QJsonArray{QJsonObject{
+        {QStringLiteral("path"), QStringLiteral("items")},
+        {QStringLiteral("columns"), QJsonObject{{QStringLiteral("price"), 10.5}}},
+        {QStringLiteral("allowed_actions"), QJsonArray{QStringLiteral("read"), QStringLiteral("list")}}}}},
+        {QStringLiteral("name"), QStringLiteral("Original")}};
+    designer.setDocument(original);
+    auto *tree = designer.findChild<QTreeWidget *>(QStringLiteral("designerCanvas"));
+    auto *resource = tree->topLevelItem(1)->child(0);
+    tree->setCurrentItem(resource->child(1)); // columns object (keys are sorted)
+    propertyValue(&designer, QStringLiteral("price"))->setText(QStringLiteral("19.25"));
+    QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().first().toObject().value(QStringLiteral("columns")).toObject().value(QStringLiteral("price")).toDouble(), 19.25);
+    designer.undo();
+    QCOMPARE(designer.document(), original);
+    designer.redo();
+    resource = tree->topLevelItem(1)->child(0);
+    tree->setCurrentItem(resource->child(0)->child(0)); // first scalar array item
+    propertyValue(&designer, QStringLiteral("Value"))->setText(QStringLiteral("delete"));
+    designer.moveSelectionDown();
+    QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().first().toObject().value(QStringLiteral("allowed_actions")).toArray(), (QJsonArray{QStringLiteral("list"), QStringLiteral("delete")}));
+    tree->setCurrentItem(tree->topLevelItem(1)->child(0));
+    designer.duplicateSelection();
+    QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().at(1).toObject().value(QStringLiteral("path")).toString(), QStringLiteral("items-2"));
+    designer.removeSelection();
+    QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().size(), 1);
+    designer.undo();
+    QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().size(), 2);
+    designer.findChild<QPushButton *>(QStringLiteral("visualRoot"))->click();
+    propertyValue(&designer, QStringLiteral("name"))->setText(QStringLiteral("Changed"));
+    QCOMPARE(designer.document().value(QStringLiteral("name")).toString(), QStringLiteral("Changed"));
+    QVERIFY(!designer.findChild<QPushButton *>(QStringLiteral("visualRedo"))->isEnabled());
+    auto *palette = designer.findChild<QListWidget *>(QStringLiteral("componentPalette"));
+    palette->itemDoubleClicked(palette->item(0));
+    QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().last().toObject().value(QStringLiteral("path")).toString(), QStringLiteral("items-3"));
+    designer.findChild<QLineEdit *>(QStringLiteral("componentSearch"))->setText(QStringLiteral("Realtime"));
+    QVERIFY(palette->item(0)->isHidden());
+    QVERIFY(!palette->item(3)->isHidden());
+    designer.findChild<QLineEdit *>(QStringLiteral("structureSearch"))->setText(QStringLiteral("19.25"));
+    QVERIFY(tree->topLevelItem(0)->isHidden());
+    QVERIFY(!tree->topLevelItem(1)->isHidden());
+}
+
+void EditorUiTests::visualStructuredAndNewPropertyDialogs()
+{
+    VisualDesigner designer;
+    designer.setDocument({{QStringLiteral("settings"), QJsonObject{{QStringLiteral("enabled"), true}}}});
+    auto *table = designer.findChild<QTableWidget *>(QStringLiteral("propertyTable"));
+    bool corrected = false;
+    QTimer::singleShot(0, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (dialog == nullptr) { return; }
+        auto *editor = dialog->findChild<QPlainTextEdit *>(QStringLiteral("structuredPropertyEditor"));
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        editor->setPlainText(QStringLiteral("[]")); // mismatched type must stay in the dialog
+        buttons->button(QDialogButtonBox::Save)->click();
+        corrected = dialog->isVisible() && editor->toPlainText() == QStringLiteral("[]");
+        editor->setPlainText(QStringLiteral("{\"enabled\":false,\"nested\":[1,\"two\"]}"));
+        buttons->button(QDialogButtonBox::Save)->click();
+    });
+    table->cellDoubleClicked(0, 1);
+    QVERIFY(corrected);
+    QCOMPARE(designer.document().value(QStringLiteral("settings")).toObject().value(QStringLiteral("enabled")).toBool(), false);
+    bool duplicateRejected = false;
+    QTimer::singleShot(0, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (dialog == nullptr) { return; }
+        auto *name = dialog->findChild<QLineEdit *>(QStringLiteral("newPropertyName"));
+        auto *type = dialog->findChild<QComboBox *>(QStringLiteral("newPropertyType"));
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        name->setText(QStringLiteral("settings"));
+        buttons->button(QDialogButtonBox::Ok)->click();
+        duplicateRejected = dialog->isVisible();
+        name->setText(QStringLiteral("newCount"));
+        type->setCurrentIndex(1);
+        buttons->button(QDialogButtonBox::Ok)->click();
+    });
+    designer.findChild<QPushButton *>(QStringLiteral("visualAddProperty"))->click();
+    QVERIFY(duplicateRejected);
+    QVERIFY(designer.document().value(QStringLiteral("newCount")).isDouble());
+    const auto row = propertyValue(&designer, QStringLiteral("newCount"))->row();
+    table->setCurrentCell(row, 0);
+    designer.findChild<QPushButton *>(QStringLiteral("visualRemoveProperty"))->click();
+    QVERIFY(!designer.document().contains(QStringLiteral("newCount")));
+    designer.undo();
+    QVERIFY(designer.document().contains(QStringLiteral("newCount")));
+}
+
+void EditorUiTests::spacesExplainAvailabilityAndKeepComposerVisible()
+{
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configureServer(server.url(), true, &error));
+    TeamWorkspace team(&api);
+    auto *tabs = team.findChild<QTabWidget *>(QStringLiteral("teamTabs"));
+    auto *availability = team.findChild<QLabel *>(QStringLiteral("spaceAvailability"));
+    auto *retry = team.findChild<QPushButton *>(QStringLiteral("retrySpacesConnection"));
+    QVERIFY(tabs->isTabEnabled(0));
+    QVERIFY(availability->text().contains(QStringLiteral("Sign in")));
+    QVERIFY(api.setSessionToken(TestSession, &error));
+    team.setCapabilities({});
+    QVERIFY(availability->text().contains(QStringLiteral("Loading")));
+    team.setAvailabilityError(QStringLiteral("HTTP 503 temporarily unavailable"));
+    QVERIFY(availability->text().contains(QStringLiteral("503")));
+    QSignalSpy retries(&team, &TeamWorkspace::retryConnectionRequested);
+    retry->click();
+    QCOMPARE(retries.size(), 1);
+    auto disabled = capabilities({QStringLiteral("*")});
+    disabled.insert(QStringLiteral("collaboration"), false);
+    team.setCapabilities(disabled);
+    QVERIFY(availability->text().contains(QStringLiteral("EDITOR_COLLABORATION_ENABLED")));
+    QVERIFY(tabs->isTabEnabled(0));
+    team.setCapabilities({{QStringLiteral("api_version"), 1}});
+    QVERIFY(availability->text().contains(QStringLiteral("Update")));
+    team.setCapabilities(capabilities({QStringLiteral("*")}));
+    deliver(api, QStringLiteral("team-areas:*"), spaces());
+    auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    QVERIFY(composer->isEnabled());
+    for (auto *button : team.findChildren<QPushButton *>()) {
+        if (button->property("forgePermission") == QStringLiteral("calls.start")) { QVERIFY(button->isEnabled()); }
+    }
+    team.resize(760, 350);
+    team.show();
+    QTest::qWait(40);
+    QVERIFY(composer->isVisible());
+    QVERIFY(team.rect().contains(QRect(composer->mapTo(&team, QPoint(0, 0)), composer->size())));
+    const auto actual = team.size();
+    QVERIFY2(actual.height() <= 360, qPrintable(QStringLiteral("Team minimum height inflated to %1").arg(actual.height())));
+    QVERIFY(team.findChild<QTreeWidget *>(QStringLiteral("attachmentList"))->isHidden());
+    team.findChild<QPushButton *>(QStringLiteral("toggleSharedFiles"))->click();
+    QVERIFY(team.findChild<QTreeWidget *>(QStringLiteral("attachmentList"))->isVisible());
+}
+
+void EditorUiTests::founderStartupRecoversCapabilityFailure()
+{
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    server.respond = [](const QByteArray &request) {
+        if (request.startsWith("GET /__forge/editor/v1/capabilities?project=")) {
+            return WorkspaceServer::Response{QJsonDocument(capabilities({QStringLiteral("*")})).toJson()};
+        }
+        if (request.startsWith("GET /__forge/editor/v1/capabilities ")) {
+            return WorkspaceServer::Response{QByteArray("{\"detail\":\"temporarily unavailable\"}"), QByteArray("503 Service Unavailable")};
+        }
+        if (request.startsWith("GET /__forge/editor/v1/projects ")) {
+            return WorkspaceServer::Response{QByteArray("{\"projects\":[{\"name\":\"Workspace\",\"directory\":\"Workspace\"}]}")};
+        }
+        if (request.startsWith("GET /__forge/editor/v1/areas?")) {
+            return WorkspaceServer::Response{QJsonDocument(spaces()).toJson()};
+        }
+        return WorkspaceServer::Response{};
+    };
+    MainWindow window(nullptr, false);
+    window.m_remoteMode = true;
+    QString error;
+    QVERIFY(window.m_api->configureServer(server.url(), true, &error));
+    QVERIFY(window.m_api->setSessionToken(TestSession, &error));
+    deliver(*window.m_api, QStringLiteral("auth-login"), {{QStringLiteral("profile"), QJsonObject{{QStringLiteral("username"), QStringLiteral("founder")}}}});
+    QVERIFY(waitUntil([&] { return window.m_currentProject == QStringLiteral("Workspace"); }));
+    auto *composer = window.m_teamWorkspace->findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    QVERIFY(waitUntil([&] { return composer->isEnabled(); }));
+    QVERIFY(window.m_teamWorkspace->findChild<QTabWidget *>(QStringLiteral("teamTabs"))->isTabEnabled(0));
+    QVERIFY(window.windowTitle().contains(QStringLiteral("v0.5.2")));
 }
 
 void EditorUiTests::cancelledProjectSelectionRestoresSelection()
@@ -707,6 +886,32 @@ void EditorUiTests::liveServerContract()
         QVERIFY(header->rect().contains(window.m_connectionLabel->geometry()));
         QVERIFY(!window.m_disconnectButton->geometry().intersects(window.m_connectionLabel->geometry()));
     }
+    MainWindow founderWindow(nullptr, false);
+    founderWindow.m_remoteMode = true;
+    QVERIFY(founderWindow.m_api->configureServer(QUrl(serverUrl), true, &error));
+    QSignalSpy founderWindowFailures(founderWindow.m_api, &ApiClient::requestFailed);
+    founderWindow.m_api->login(QStringLiteral("ui.founder"), QStringLiteral("Granite river orbits seven moons 42!"));
+    auto *founderComposer = founderWindow.m_teamWorkspace->findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    QVERIFY(waitUntil([&] { return founderComposer->isEnabled(); }));
+    QCOMPARE(founderWindow.m_currentProject, QStringLiteral("Workspace"));
+    for (auto *button : founderWindow.m_teamWorkspace->findChildren<QPushButton *>()) {
+        if (button->property("forgePermission") == QStringLiteral("calls.start")) { QVERIFY(button->isEnabled()); }
+    }
+    founderWindow.resize(1024, 640);
+    founderWindow.show();
+    QTest::qWait(60);
+    auto *founderMessages = founderWindow.m_teamWorkspace->findChild<QTreeWidget *>(QStringLiteral("messageList"));
+    auto *founderAreas = founderWindow.m_teamWorkspace->findChild<QListWidget *>(QStringLiteral("areaList"));
+    QVERIFY2(founderMessages->viewport()->height() >= 75, "Compact dock must show conversation rows, not just its header");
+    QVERIFY2(founderAreas->viewport()->height() >= 35, "Compact dock must show the selected space");
+    QVERIFY(founderWindow.rect().contains(QRect(founderComposer->mapTo(&founderWindow, QPoint(0, 0)), founderComposer->size())));
+    founderComposer->setText(QStringLiteral("Founder UI reply"));
+    QTest::keyClick(founderComposer, Qt::Key_Return);
+    QVERIFY(waitUntil([&] { return founderComposer->text().isEmpty(); }));
+    QVERIFY(waitUntil([&] { return founderWindow.m_teamWorkspace->findChild<QTreeWidget *>(QStringLiteral("messageList"))->topLevelItemCount() == 3; }));
+    QCOMPARE(founderWindowFailures.size(), 0);
+    if (!screenshot.isEmpty()) { QVERIFY(founderWindow.grab().save(screenshot + QStringLiteral(".founder.png"))); }
+    founderWindow.m_api->logout();
     window.m_api->logout();
     worker.logout();
     api.logout();

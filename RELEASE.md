@@ -1,13 +1,18 @@
-# JSON API Forge Editor v0.5.1
+# JSON API Forge Editor v0.5.2
 
-**Release date:** 29 August 2026
+**Release date:** 4 October 2026
 
 **Status:** Alpha desktop workspace
 
 **License:** JSON API Forge Source-Available Self-Host License 1.1
 
-v0.5.1 hardens the native C++20/Qt 6 workspace for local and policy-controlled
+v0.5.2 hardens the native C++20/Qt 6 workspace for local and policy-controlled
 remote Forge administration while preserving the v0.5.0 document contract.
+
+This release adds animated navigation, visible Spaces & calls availability and
+retry controls, a pinned chat composer, and an expanded Visual workspace with
+search, nested typed editing, structured JSON dialogs, duplication, reordering
+and undo/redo. The window title and executable metadata display v0.5.2.
 
 The release includes code, typed visual and graph editing; worker profiles;
 ranked/scoped access; project areas; messaging, notes and attachments;
@@ -36,7 +41,7 @@ Every deliverable has a SHA-256 sidecar, and the combined job verifies all
 checksums before creating the all-platform artifact. Signing, notarization and
 GitHub Release publication remain explicit Project Owner steps.
 
-The server-side v0.5.1 control plane from `main` is required for remote team,
+The server-side v0.5.2 control plane from `main` is required for remote team,
 database and collaboration features. Keep that endpoint private, HTTPS-only
 outside loopback, and configured with least-privilege project/document/
 database policies.
