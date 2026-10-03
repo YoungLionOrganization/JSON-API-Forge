@@ -83,7 +83,7 @@ def release_files() -> set[str]:
 
 def write_manifest() -> None:
     entries = [f"{digest(ROOT / relative)}  {relative}" for relative in sorted(release_files())]
-    MANIFEST.write_text("\n".join(entries) + "\n", encoding="utf-8")
+    MANIFEST.write_text("\n".join(entries) + "\n", encoding="utf-8", newline="\n")
     print(f"MANIFEST written: {len(entries)} files")
 
 

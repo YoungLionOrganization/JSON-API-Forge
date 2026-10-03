@@ -258,6 +258,11 @@ class Principal:
 
 
 def hash_key(raw: str) -> str:
+    """Lookup digest for server-generated 288-bit API tokens, never passwords.
+
+    Preserve existing database records and constant-cost unauthenticated lookup.
+    Human-chosen Editor passwords separately use salted scrypt.
+    """
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

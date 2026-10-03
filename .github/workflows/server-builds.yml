@@ -44,7 +44,7 @@ jobs:
           python -m pip install -e ".[dev]"
           ruff format --check framework scripts tests forge.py main.py passenger_wsgi.py
           ruff check framework scripts tests forge.py main.py passenger_wsgi.py
-          pytest -q tests/test_v042_hardening_editor.py tests/test_v050_editor_collaboration.py tests/test_security.py
+          pytest -q tests/test_v042_hardening_editor.py tests/test_v050_editor_collaboration.py tests/test_v052_code_scanning.py tests/test_security.py
           python scripts/check_manifest.py
 
   standalone:

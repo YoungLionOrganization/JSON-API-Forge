@@ -5,7 +5,9 @@ import json
 import os
 import re
 import secrets
+import stat
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -254,6 +256,49 @@ def _replace_env_secrets(text: str, values: dict[str, str]) -> str:
     return "".join(out)
 
 
+def _private_file_info(target: Path) -> os.stat_result | None:
+    try:
+        info = target.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise SystemExit("Secret output must be a regular file without symbolic or hard links")
+    return info
+
+
+def _write_private_file(target: Path, content: str, *, overwrite: bool = False) -> None:
+    """Provision secrets atomically; POSIX mode is 0600 from the first byte.
+
+    Windows uses the deployment directory's inherited ACL. Deployers must keep
+    that directory private to the account running Forge.
+    """
+    before = _private_file_info(target)
+    if before is not None and not overwrite:
+        raise SystemExit(f"Refusing to overwrite existing {target}")
+    fd, temporary_name = tempfile.mkstemp(prefix=".forge-secret-", dir=target.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if overwrite and before is not None:
+            current = _private_file_info(target)
+            if current is None or (current.st_dev, current.st_ino, current.st_mtime_ns, current.st_size) != (
+                before.st_dev,
+                before.st_ino,
+                before.st_mtime_ns,
+                before.st_size,
+            ):
+                raise SystemExit("Secret output changed while preparing the update; retry")
+            os.replace(temporary, target)
+        else:
+            # Publish without overwriting a concurrently created destination.
+            os.link(temporary, target, follow_symlinks=False)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def cmd_init(args: argparse.Namespace) -> None:
     root = _root(args)
     target = root / ".env"
@@ -263,7 +308,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         managed.add("EDITOR_TOKEN")
     names = sorted(_required_secret_envs(root) | managed)
     generated = {name: _secret() for name in names}
-    existed = target.exists()
+    existed = _private_file_info(target) is not None
     if existed:
         if not args.force:
             raise SystemExit(f"Refusing to overwrite existing {target}. Use --force only if you intend to rotate Forge secrets.")
@@ -280,17 +325,26 @@ def cmd_init(args: argparse.Namespace) -> None:
             "\n",
         ]
         content = "".join(baseline) + "".join(f"{name}={generated[name]}\n" for name in names)
-    target.write_text(content, encoding="utf-8")
-    try:
-        target.chmod(0o600)
-    except OSError:
-        pass
+    _write_private_file(target, content, overwrite=existed)
     print(f"{'Updated' if existed else 'Created'} {target} with {len(names)} generated/rotated secret(s).")
     print("Bootstrap credentials are one-time by default: create a persistent API key, then the bootstrap key is consumed.")
 
 
 def cmd_secrets(args: argparse.Namespace) -> None:
+    if not 1 <= args.count <= 100:
+        raise SystemExit("--count must be between 1 and 100")
+    output = getattr(args, "output", None)
+    if output:
+        target = Path(output)
+        if not target.is_absolute():
+            target = _root(args) / target
+        _write_private_file(target, "".join(_secret() + "\n" for _ in range(args.count)))
+        print(f"Created {target} with {args.count} secret(s).")
+        return
+    if not sys.stdout.isatty() and not getattr(args, "stdout", False):
+        raise SystemExit("Refusing to send secrets to redirected output; use --output FILE or explicitly opt in with --stdout")
     for _ in range(args.count):
+        # Intentional user-requested export, never runtime logging.
         print(_secret())
 
 
@@ -417,8 +471,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_init)
 
-    p = sub.add_parser("secrets", help="Generate strong secrets without modifying files")
+    p = sub.add_parser("secrets", help="Generate strong secrets for a terminal or private output file")
     p.add_argument("--count", type=int, default=1)
+    export = p.add_mutually_exclusive_group()
+    export.add_argument("--output", "-o", help="Create a secret file without overwriting existing output")
+    export.add_argument("--stdout", action="store_true", help="Explicitly allow secret export to redirected stdout")
     p.set_defaults(func=cmd_secrets)
 
     p = sub.add_parser("schema", help="Regenerate JSON Schemas from typed config models")

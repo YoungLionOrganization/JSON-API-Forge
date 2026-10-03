@@ -774,7 +774,7 @@ def _load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def _load_project_dir(project_dir: Path, *, dotenv: dict[str, str | None] | None = None) -> ProjectConfig:
+def _load_project_dir(project_dir: Path, *, dotenv: dict[str, str | None] | None = None, default_name: str | None = None) -> ProjectConfig:
     if project_dir.is_symlink():
         raise RuntimeError("App directories may not be symbolic links")
     manifest = project_dir / "app.json"
@@ -795,8 +795,8 @@ def _load_project_dir(project_dir: Path, *, dotenv: dict[str, str | None] | None
             raw = _deep_merge(raw, _load_json(fragment))
 
     raw.pop("$schema", None)
-    raw.setdefault("slug", project_dir.name.lower())
-    raw.setdefault("name", project_dir.name)
+    raw.setdefault("slug", (default_name or project_dir.name).lower())
+    raw.setdefault("name", default_name or project_dir.name)
     raw["project_dir"] = str(project_dir.resolve())
     raw = _resolve_env(raw, dotenv)
     try:

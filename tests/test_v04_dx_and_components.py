@@ -86,7 +86,7 @@ def test_cli_init_new_schema_and_no_default_secrets(tmp_path, capsys):
     with pytest.raises(SystemExit):
         cli_main(["--root", str(tmp_path), "init"])
     cli_main(["--root", str(tmp_path), "schema"])
-    assert json.loads((tmp_path / "schemas/project.schema.json").read_text())["$schema"].startswith("https://json-schema.org")
+    assert json.loads((tmp_path / "schemas/project.schema.json").read_text())["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     manifest_schema = json.loads((tmp_path / "schemas/manifest.schema.json").read_text())
     assert "required" not in manifest_schema
     assert json.loads((tmp_path / "app/Bot/app.json").read_text())["$schema"] == "../../schemas/manifest.schema.json"

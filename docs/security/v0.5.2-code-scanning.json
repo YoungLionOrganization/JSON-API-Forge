@@ -1,0 +1,770 @@
+{
+  "review_date": "2026-10-03",
+  "baseline_commit": "9d7805f0fb16567e17ef2ee0ee11195e56d89153",
+  "codeql_cli": "2.27.1",
+  "query_pack": "codeql/python-queries@1.8.11",
+  "suite": "python-code-scanning.qls",
+  "baseline_count": 58,
+  "fixed_count": 2,
+  "baseline_rules": {
+    "py/incomplete-url-substring-sanitization": 1,
+    "py/path-injection": 54,
+    "py/clear-text-logging-sensitive-data": 1,
+    "py/clear-text-storage-sensitive-data": 1,
+    "py/weak-sensitive-data-hashing": 1
+  },
+  "fixed_rules": {
+    "py/clear-text-logging-sensitive-data": 1,
+    "py/weak-sensitive-data-hashing": 1
+  },
+  "query_exclusions": [],
+  "source_sha256": {
+    "framework/cli.py": "e49b20a66f3b8a07308b58417eef7dbec8384bdaa6456ba46f8da0eee356fa64",
+    "framework/editor_api.py": "19840029b4fde4f4f9e3ab8ea52e3ede806bb8798922e99ab7d066c5f6d7fb71",
+    "framework/config.py": "5748add336febceec488dd06dd9fab28f8497bbd37f58c6398df974ab1119ef2",
+    "framework/security.py": "84629be3c3d1aef5f3010f534b0566ff663d04dc3d88262e147a5aa2ae30e95d",
+    "framework/schema.py": "7a9f04faf18ed8ec3fe0c4a903b669e85d6e53d80b928804409131bdaa4aa743",
+    "tests/test_v052_code_scanning.py": "6ecf9f91d80018a89ef35f33dba23db9bbab0637b2e91a1020aa21c48cee9461",
+    "tests/test_v04_dx_and_components.py": "fa54c8026f75b39de3bcec8b8876c53d281245b0c0e58e17472e49aa7db67f54",
+    "scripts/check_critical_coverage.py": "ec63ea4fc896b86b3ea894b2c7dc172fd5024c9ca089b900fbd5fe54a31223e8",
+    "scripts/check_manifest.py": "14acf8bec2d2f24a34e80fb2fe6393638d02a7fe6fc54f638a576d87ee71e332",
+    ".github/workflows/server-builds.yml": "7334e9a154b725f4f9a18c198f69b2d3fec682c030c8501728cf4ec8d389d727"
+  },
+  "remaining": [
+    {
+      "rule": "py/clear-text-logging-sensitive-data",
+      "location": {
+        "artifactLocation": {
+          "uri": "framework/cli.py",
+          "uriBaseId": "%SRCROOT%",
+          "index": 0
+        },
+        "region": {
+          "startLine": 348,
+          "startColumn": 15,
+          "endColumn": 24
+        }
+      },
+      "disposition": "false-positive review required in GitHub"
+    },
+    {
+      "rule": "py/weak-sensitive-data-hashing",
+      "location": {
+        "artifactLocation": {
+          "uri": "framework/security.py",
+          "uriBaseId": "%SRCROOT%",
+          "index": 1
+        },
+        "region": {
+          "startLine": 266,
+          "startColumn": 27,
+          "endColumn": 39
+        }
+      },
+      "disposition": "false-positive review required in GitHub"
+    }
+  ],
+  "alerts": [
+    {
+      "number": 67,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 791,
+        "end_line": 791,
+        "start_column": 28,
+        "end_column": 38
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 66,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 790,
+        "end_line": 790,
+        "start_column": 8,
+        "end_column": 18
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 65,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 788,
+        "end_line": 788,
+        "start_column": 8,
+        "end_column": 18
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 64,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 778,
+        "end_line": 778,
+        "start_column": 8,
+        "end_column": 19
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 63,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 765,
+        "end_line": 765,
+        "start_column": 14,
+        "end_column": 18
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 62,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 763,
+        "end_line": 763,
+        "start_column": 37,
+        "end_column": 41
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 61,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 763,
+        "end_line": 763,
+        "start_column": 12,
+        "end_column": 16
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 60,
+      "rule": "py/weak-sensitive-data-hashing",
+      "baseline_location": {
+        "path": "framework/security.py",
+        "start_line": 261,
+        "end_line": 261,
+        "start_column": 27,
+        "end_column": 39
+      },
+      "disposition": "high-entropy-api-token-digest"
+    },
+    {
+      "number": 59,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 603,
+        "end_line": 603,
+        "start_column": 31,
+        "end_column": 40
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 58,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 601,
+        "end_line": 601,
+        "start_column": 39,
+        "end_column": 45
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 57,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 601,
+        "end_line": 601,
+        "start_column": 28,
+        "end_column": 37
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 56,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 585,
+        "end_line": 585,
+        "start_column": 18,
+        "end_column": 60
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 55,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 571,
+        "end_line": 571,
+        "start_column": 18,
+        "end_column": 40
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 54,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 570,
+        "end_line": 570,
+        "start_column": 18,
+        "end_column": 38
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 53,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 569,
+        "end_line": 569,
+        "start_column": 18,
+        "end_column": 37
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 52,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 568,
+        "end_line": 568,
+        "start_column": 18,
+        "end_column": 38
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 51,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 566,
+        "end_line": 566,
+        "start_column": 54,
+        "end_column": 73
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 50,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 563,
+        "end_line": 563,
+        "start_column": 16,
+        "end_column": 22
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 49,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 545,
+        "end_line": 545,
+        "start_column": 21,
+        "end_column": 30
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 48,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 539,
+        "end_line": 539,
+        "start_column": 48,
+        "end_column": 61
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 47,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 537,
+        "end_line": 537,
+        "start_column": 43,
+        "end_column": 49
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 46,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 537,
+        "end_line": 537,
+        "start_column": 32,
+        "end_column": 41
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 45,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 530,
+        "end_line": 530,
+        "start_column": 86,
+        "end_column": 99
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 44,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 530,
+        "end_line": 530,
+        "start_column": 62,
+        "end_column": 80
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 43,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 529,
+        "end_line": 529,
+        "start_column": 17,
+        "end_column": 30
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 42,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 523,
+        "end_line": 523,
+        "start_column": 21,
+        "end_column": 34
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 41,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 522,
+        "end_line": 522,
+        "start_column": 21,
+        "end_column": 41
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 40,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 510,
+        "end_line": 510,
+        "start_column": 22,
+        "end_column": 28
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 39,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 505,
+        "end_line": 505,
+        "start_column": 31,
+        "end_column": 37
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 38,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 503,
+        "end_line": 503,
+        "start_column": 51,
+        "end_column": 57
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 37,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 503,
+        "end_line": 503,
+        "start_column": 26,
+        "end_column": 32
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 36,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 459,
+        "end_line": 459,
+        "start_column": 16,
+        "end_column": 20
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 35,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 456,
+        "end_line": 456,
+        "start_column": 16,
+        "end_column": 20
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 34,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 454,
+        "end_line": 454,
+        "start_column": 34,
+        "end_column": 38
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 33,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 454,
+        "end_line": 454,
+        "start_column": 16,
+        "end_column": 20
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 32,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 429,
+        "end_line": 429,
+        "start_column": 39,
+        "end_column": 57
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 31,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 427,
+        "end_line": 427,
+        "start_column": 39,
+        "end_column": 56
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 30,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 425,
+        "end_line": 425,
+        "start_column": 54,
+        "end_column": 72
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 29,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 391,
+        "end_line": 391,
+        "start_column": 41,
+        "end_column": 65
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 28,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 388,
+        "end_line": 388,
+        "start_column": 27,
+        "end_column": 37
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 27,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 386,
+        "end_line": 386,
+        "start_column": 20,
+        "end_column": 30
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 26,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 385,
+        "end_line": 385,
+        "start_column": 13,
+        "end_column": 23
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 25,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 381,
+        "end_line": 381,
+        "start_column": 35,
+        "end_column": 59
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 24,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 381,
+        "end_line": 381,
+        "start_column": 25,
+        "end_column": 33
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 23,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 379,
+        "end_line": 379,
+        "start_column": 16,
+        "end_column": 24
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 22,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 377,
+        "end_line": 377,
+        "start_column": 9,
+        "end_column": 20
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 21,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 356,
+        "end_line": 356,
+        "start_column": 36,
+        "end_column": 56
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 20,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 331,
+        "end_line": 331,
+        "start_column": 13,
+        "end_column": 20
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 19,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 328,
+        "end_line": 328,
+        "start_column": 52,
+        "end_column": 59
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 18,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 328,
+        "end_line": 328,
+        "start_column": 32,
+        "end_column": 39
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 17,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 199,
+        "end_line": 199,
+        "start_column": 50,
+        "end_column": 61
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 16,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/editor_api.py",
+        "start_line": 199,
+        "end_line": 199,
+        "start_column": 9,
+        "end_column": 15
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 15,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 800,
+        "end_line": 800,
+        "start_column": 30,
+        "end_column": 41
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 12,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 783,
+        "end_line": 783,
+        "start_column": 12,
+        "end_column": 20
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 11,
+      "rule": "py/path-injection",
+      "baseline_location": {
+        "path": "framework/config.py",
+        "start_line": 781,
+        "end_line": 781,
+        "start_column": 12,
+        "end_column": 20
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 8,
+      "rule": "py/incomplete-url-substring-sanitization",
+      "baseline_location": {
+        "path": "tests/test_v04_dx_and_components.py",
+        "start_line": 89,
+        "end_line": 89,
+        "start_column": 12,
+        "end_column": 127
+      },
+      "disposition": "addressed"
+    },
+    {
+      "number": 5,
+      "rule": "py/clear-text-logging-sensitive-data",
+      "baseline_location": {
+        "path": "framework/cli.py",
+        "start_line": 294,
+        "end_line": 294,
+        "start_column": 15,
+        "end_column": 24
+      },
+      "disposition": "intentional-secret-export"
+    },
+    {
+      "number": 4,
+      "rule": "py/clear-text-storage-sensitive-data",
+      "baseline_location": {
+        "path": "framework/cli.py",
+        "start_line": 283,
+        "end_line": 283,
+        "start_column": 23,
+        "end_column": 30
+      },
+      "disposition": "addressed"
+    }
+  ],
+  "local_tests": {
+    "passed": 200,
+    "skipped_external_services": 7,
+    "branch_coverage_percent": 81.28
+  }
+}

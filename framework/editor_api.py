@@ -43,6 +43,27 @@ _GRAPH_TYPE = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,7}$")
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 _CALL_TICKET = re.compile(r"^jfc_[A-Za-z0-9_-]{40,80}$")
 _CALL_PROTOCOL = "forge-call-v1"
+_WINDOWS_DEVICES = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "CONIN$",
+        "CONOUT$",
+        *(f"COM{i}" for i in (*range(1, 10), "¹", "²", "³")),
+        *(f"LPT{i}" for i in (*range(1, 10), "¹", "²", "³")),
+    }
+)
+
+
+def _safe_filename(value: str) -> bool:
+    return bool(value) and not (
+        value in {".", ".."}
+        or value.endswith((".", " "))
+        or any(ord(char) < 32 or ord(char) == 127 or char in '\\/:*?"<>|' for char in value)
+        or value.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_DEVICES
+    )
 
 
 class EditorModel(BaseModel):
@@ -171,13 +192,15 @@ def _allowed_project(settings: Settings, name: str) -> bool:
 
 
 def _project_name(name: str) -> str:
-    if not _PROJECT_NAME.fullmatch(name) or name.casefold() in _RESERVED or name in {".", ".."}:
+    if not _PROJECT_NAME.fullmatch(name) or name.casefold() in _RESERVED or not _safe_filename(name):
         raise HTTPException(status_code=404, detail="Project not found")
     return name
 
 
 def _document_path(project_dir: Path, raw: str, *, allow_hooks: bool, allow_graphs: bool) -> tuple[Path, str]:
-    if not raw or "\\" in raw or "\0" in raw:
+    # Check the original spelling: PurePosixPath collapses '.', empty segments
+    # and trailing separators before its parts can be inspected.
+    if not raw or len(raw) > 1024 or any(not _safe_filename(part) for part in raw.split("/")):
         raise HTTPException(status_code=400, detail="Invalid document path")
     relative = PurePosixPath(raw)
     if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
@@ -194,12 +217,22 @@ def _document_path(project_dir: Path, raw: str, *, allow_hooks: bool, allow_grap
         )
     if not allowed:
         raise HTTPException(status_code=403, detail="Document type is not allowed by the editor policy")
-    target = project_dir.joinpath(*relative.parts)
+    root = os.path.realpath(project_dir)
+    candidate = os.path.join(root, *relative.parts)
     try:
-        target.resolve(strict=False).relative_to(project_dir.resolve())
-    except ValueError as exc:
+        target = os.path.realpath(candidate)
+    except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="Invalid document path") from exc
-    return target, normalized
+    # Include the separator so sibling roots such as Notes-private cannot pass.
+    # Use the exact normalized value that was checked for subsequent file access.
+    if not target.startswith(root + os.sep) or os.path.normcase(target) != os.path.normcase(os.path.abspath(candidate)):
+        raise HTTPException(status_code=400, detail="Invalid document path")
+    current = project_dir
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise HTTPException(status_code=400, detail="Invalid document path")
+    return Path(target), normalized
 
 
 def _graph_error(message: str) -> None:
@@ -324,13 +357,17 @@ class EditorControlPlane:
         name = _project_name(name)
         if not _allowed_project(self.settings, name):
             raise HTTPException(status_code=404, detail="Project not found")
-        project = self.apps_dir / name
-        if must_exist and (not project.is_dir() or project.is_symlink()):
-            raise HTTPException(status_code=404, detail="Project not found")
+        root = os.path.realpath(self.apps_dir)
+        candidate = os.path.join(root, name)
         try:
-            project.resolve(strict=False).relative_to(self.apps_dir)
-        except ValueError as exc:
+            normalized = os.path.realpath(candidate)
+        except (OSError, ValueError) as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+        if not normalized.startswith(root + os.sep) or os.path.normcase(normalized) != os.path.normcase(os.path.abspath(candidate)):
+            raise HTTPException(status_code=404, detail="Project not found")
+        project = Path(normalized)
+        if project.is_symlink() or (must_exist and not project.is_dir()):
+            raise HTTPException(status_code=404, detail="Project not found")
         return project
 
     async def authorize_network(self, request: Request | WebSocket) -> None:
@@ -352,6 +389,7 @@ class EditorControlPlane:
 
     def runtime_for_project(self, project_name: str) -> ProjectRuntime:
         project = self._project_dir(project_name)
+        self._assert_no_symlinks(project)
         try:
             manifest = json.loads((project / "app.json").read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -363,7 +401,7 @@ class EditorControlPlane:
 
     def _assert_no_symlinks(self, project: Path) -> None:
         for directory in (project, project / "config", project / "hooks", project / "graphs"):
-            if directory.exists() and directory.is_symlink():
+            if directory.is_symlink() or os.path.normcase(os.path.realpath(directory)) != os.path.normcase(os.path.abspath(directory)):
                 raise HTTPException(status_code=409, detail="Editor projects may not contain symlinked control directories")
         candidates = [project / "app.json"]
         for directory, pattern in ((project / "config", "*.json"), (project / "hooks", "*.py"), (project / "graphs", "*.forgegraph.json")):
@@ -464,6 +502,7 @@ class EditorControlPlane:
 
     def validate_project(self, project_name: str) -> dict:
         project = self._project_dir(project_name)
+        self._assert_no_symlinks(project)
         configured = _load_project_dir(project, dotenv=dotenv_values(self.apps_dir.parent / ".env"))
         return {
             "valid": True,
@@ -511,7 +550,7 @@ class EditorControlPlane:
                     raise HTTPException(status_code=409, detail="Document target is not a regular file")
 
                 with tempfile.TemporaryDirectory(prefix="forge-editor-") as temp_root:
-                    staged = Path(temp_root) / project.name
+                    staged = Path(temp_root) / "project"
                     self._stage_project(project, staged)
                     staged_target, _ = _document_path(
                         staged,
@@ -522,7 +561,7 @@ class EditorControlPlane:
                     staged_target.parent.mkdir(parents=True, exist_ok=True)
                     staged_target.write_bytes(data)
                     try:
-                        _load_project_dir(staged, dotenv=dotenv_values(self.apps_dir.parent / ".env"))
+                        _load_project_dir(staged, dotenv=dotenv_values(self.apps_dir.parent / ".env"), default_name=project.name)
                     except RuntimeError as exc:
                         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -552,7 +591,7 @@ class EditorControlPlane:
     async def create_project(self, payload: ProjectCreate) -> dict:
         if self.settings.editor_read_only or not self.settings.editor_allow_create_projects:
             raise HTTPException(status_code=403, detail="Project creation is disabled by the editor policy")
-        if not _PROJECT_NAME.fullmatch(payload.name) or payload.name.casefold() in _RESERVED:
+        if not _PROJECT_NAME.fullmatch(payload.name) or payload.name.casefold() in _RESERVED or not _safe_filename(payload.name):
             raise HTTPException(status_code=422, detail="Invalid project directory name")
         if not _PROJECT_SLUG.fullmatch(payload.slug):
             raise HTTPException(status_code=422, detail="Invalid project slug")
@@ -563,7 +602,7 @@ class EditorControlPlane:
             if target.exists():
                 raise HTTPException(status_code=409, detail="Project already exists")
             self.apps_dir.mkdir(parents=True, exist_ok=True)
-            temporary = Path(tempfile.mkdtemp(prefix=f".{payload.name}.", dir=self.apps_dir))
+            temporary = Path(tempfile.mkdtemp(prefix=".forge-project-", dir=self.apps_dir))
             try:
                 (temporary / "config").mkdir()
                 (temporary / "hooks").mkdir()

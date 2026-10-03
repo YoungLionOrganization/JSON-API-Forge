@@ -57,5 +57,5 @@ def write_schemas(directory: Path) -> list[Path]:
         directory / "fragment.schema.json": fragment_schema(),
     }
     for path, value in outputs.items():
-        path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     return list(outputs)

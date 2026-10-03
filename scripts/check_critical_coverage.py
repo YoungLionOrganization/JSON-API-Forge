@@ -35,7 +35,7 @@ def main() -> int:
     parser.add_argument("--minimum", type=float, default=None)
     args = parser.parse_args()
     payload = json.loads(Path(args.report).read_text(encoding="utf-8"))
-    files = payload.get("files", {})
+    files = {name.replace("\\", "/"): info for name, info in payload.get("files", {}).items()}
     failures = []
     print("Critical module branch-aware coverage gates:")
     for module, configured_floor in MODULE_FLOORS.items():

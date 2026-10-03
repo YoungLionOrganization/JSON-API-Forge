@@ -151,7 +151,7 @@ forge routes               print generated routes
 forge openapi              generate OpenAPI
 forge schema               regenerate JSON Schemas
 forge migrate              create required support/schema objects explicitly
-forge secrets              secret tooling
+forge secrets              interactive secret export (--output FILE for a file)
 ```
 
 Run `forge --help` and command-specific help for current options.
