@@ -40,6 +40,9 @@ dispose the page before its temporary WebEngine profile.
   call tickets and logout.
 - GitHub Actions runs GUI tests on all six platforms and under sanitizers. Linux
   x64 also checks the native client against a pinned main-branch server commit.
+- Windows ARM64 uses the VS 2026 generator matching the current hosted runner;
+  x64 retains VS 2022. Tests parse HTTP header names without case sensitivity
+  and wait for acknowledgements rather than depending on fixed network sleeps.
 
 The local MinGW build has no Qt WebEngine. Physical microphone/camera access and
 two-person WebRTC media were not exercised by the local contract test; the test

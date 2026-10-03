@@ -14,7 +14,7 @@ Install Qt 6.8.3 (Qt 6.4 or newer is supported) with these components:
 Platform compiler requirements:
 
 - **Windows x64:** Visual Studio 2022 Build Tools with **Desktop development with C++**, plus the `MSVC 2022 64-bit` Qt package.
-- **Windows ARM64:** the Visual Studio 2022 ARM64 C++ tools and the `MSVC 2022 ARM64` Qt package. Do not mix x64 Qt libraries with an ARM64 kit.
+- **Windows ARM64:** ARM64 C++ tools and the `MSVC 2022 ARM64` Qt package. The current GitHub `windows-11-arm` image uses VS 2026; CI selects `Visual Studio 18 2026` (CMake 4.2+). Local VS 2022 installations can use their matching generator. Do not mix x64 Qt libraries with an ARM64 kit.
 - **macOS:** Xcode command-line tools and the Qt package matching the Mac architecture.
 - **Linux:** GCC or Clang, Ninja, and the Qt 6 development packages. On Ubuntu, the CI-equivalent base is `qt6-base-dev qt6-base-dev-tools libxcb-cursor0 ninja-build`; `qt6-webengine-dev` is optional.
 

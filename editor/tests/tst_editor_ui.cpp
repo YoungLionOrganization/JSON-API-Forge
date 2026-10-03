@@ -42,6 +42,15 @@
 namespace {
 const QByteArray TestSession("jfe_session_9M2vK7pQ4xR8sT6wY3nC5aH1dL0uB7eF9qA2sD4gH6jK8mN");
 
+// Qt 6.8's QTRY macros narrow chrono::rep under -Wconversion on LP64.
+bool waitUntil(const std::function<bool()> &condition, int timeoutMs = 5000)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (!condition() && timer.elapsed() < timeoutMs) { QTest::qWait(10); }
+    return condition();
+}
+
 class WorkspaceServer final : public QTcpServer {
 public:
     struct Response {
@@ -175,10 +184,11 @@ void EditorUiTests::sidebarReclaimsSpace()
     const int original = sidebar->width();
     QVERIFY(original >= 220);
     window.toggleSidebar();
-    QTRY_VERIFY(sidebar->isHidden());
-    QTRY_COMPARE(splitter->widget(1)->geometry(), splitter->contentsRect());
+    QVERIFY(waitUntil([&] { return sidebar->isHidden(); }));
+    QVERIFY(waitUntil([&] { return (splitter->widget(1)->geometry()) == (splitter->contentsRect()); }));
+    QCOMPARE(splitter->widget(1)->geometry(), splitter->contentsRect());
     window.toggleSidebar();
-    QTRY_VERIFY(sidebar->isVisible());
+    QVERIFY(waitUntil([&] { return sidebar->isVisible(); }));
     QCOMPARE(sidebar->width(), original);
     for (int count = 0; count < 8; ++count) { window.toggleSidebar(); }
     QVERIFY(sidebar->isVisible());
@@ -192,9 +202,9 @@ void EditorUiTests::sidebarResponsivePreference()
     window.resize(1280, 800);
     QTest::qWait(20);
     window.resize(820, 640);
-    QTRY_VERIFY(window.m_sidebar->isHidden());
+    QVERIFY(waitUntil([&] { return window.m_sidebar->isHidden(); }));
     window.resize(1280, 800);
-    QTRY_VERIFY(window.m_sidebar->isVisible());
+    QVERIFY(waitUntil([&] { return window.m_sidebar->isVisible(); }));
     window.toggleSidebar();
     window.resize(820, 640);
     window.resize(1280, 800);
@@ -207,7 +217,7 @@ void EditorUiTests::compactTeamKeepsNavigation()
     window.resize(1024, 640);
     window.show();
     window.showTeamPreview();
-    QTRY_VERIFY(window.centralWidget()->isVisible());
+    QVERIFY(waitUntil([&] { return window.centralWidget()->isVisible(); }));
     QVERIFY(window.m_teamDock->isVisible());
     QVERIFY(window.m_sidebarButton->isVisible());
 }
@@ -226,9 +236,14 @@ void EditorUiTests::disconnectRevokesSession()
     QVERIFY(window.m_disconnectButton->isVisible());
     QVERIFY(window.m_disconnectButton->parentWidget()->objectName() == QStringLiteral("workspaceHeader"));
     window.disconnectServer();
-    QTRY_COMPARE(server.requests.size(), 1);
+    QVERIFY(waitUntil([&] { return (server.requests.size()) == (1); }));
+    QCOMPARE(server.requests.size(), 1);
     QVERIFY(server.requests.first().startsWith("POST /__forge/editor/v1/auth/logout "));
-    QVERIFY(server.requests.first().contains(QByteArray("Authorization: Bearer ") + TestSession));
+    QByteArray authorization;
+    for (const auto &line : server.requests.first().split('\n')) {
+        if (line.left(14).toLower() == QByteArray("authorization:")) { authorization = line.mid(14).trimmed(); }
+    }
+    QCOMPARE(authorization, QByteArray("Bearer ") + TestSession);
     QVERIFY(!window.m_api->isConfigured());
     QVERIFY(window.m_disconnectButton->isHidden());
 }
@@ -352,7 +367,8 @@ void EditorUiTests::workerRefreshRespectsPermissionsAndGlobalScope()
     TeamWorkspace team(&api);
     team.setCapabilities(capabilities({QStringLiteral("profiles.read"), QStringLiteral("members.read"), QStringLiteral("areas.read"), QStringLiteral("messages.read")}));
     team.refreshAll();
-    QTRY_COMPARE(server.requests.size(), 3);
+    QVERIFY(waitUntil([&] { return (server.requests.size()) == (3); }));
+    QCOMPARE(server.requests.size(), 3);
     bool requestedGlobalSpaces = false;
     for (const auto &request : server.requests) {
         QVERIFY(!request.contains("/roles "));
@@ -386,18 +402,25 @@ void EditorUiTests::failedMessagePreservesDraftAndPreventsDuplicatePosts()
     auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
     composer->setText(QStringLiteral("Keep this draft"));
     QSignalSpy failed(&api, &ApiClient::requestFailed);
+    QSignalSpy acknowledged(&api, &ApiClient::jsonReceived);
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
-    QTRY_COMPARE(failed.size(), 1);
+    QVERIFY(waitUntil([&] { return (failed.size()) == (1); }));
+    QCOMPARE(failed.size(), 1);
     QCOMPARE(posts, 1);
     QCOMPARE(composer->text(), QStringLiteral("Keep this draft"));
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
     composer->setText(QStringLiteral("Newer unsent text"));
-    QTest::qWait(150);
+    QVERIFY(waitUntil([&] {
+        for (const auto &record : acknowledged) {
+            if (record.at(0).toString().startsWith(QStringLiteral("team-message:"))) { return true; }
+        }
+        return false;
+    }));
     QCOMPARE(posts, 2);
     QCOMPARE(composer->text(), QStringLiteral("Newer unsent text"));
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
-    QTest::qWait(150);
+    QVERIFY(waitUntil([&] { return composer->text().isEmpty(); }));
     QCOMPARE(posts, 3);
     QVERIFY(composer->text().isEmpty());
 }
@@ -489,7 +512,8 @@ void EditorUiTests::founderWildcardPermissions()
     TeamWorkspace team(&api);
     team.setCapabilities(capabilities({QStringLiteral("*")}));
     team.refreshAll();
-    QTRY_COMPARE(server.requests.size(), 6);
+    QVERIFY(waitUntil([&] { return (server.requests.size()) == (6); }));
+    QCOMPARE(server.requests.size(), 6);
     bool roles = false;
     bool audit = false;
     for (const auto &request : server.requests) {
@@ -516,7 +540,8 @@ void EditorUiTests::restrictedNotesCarryReaderRank()
     QCOMPARE(rank->value(), 100);
     rank->setValue(60);
     QVERIFY(QMetaObject::invokeMethod(&team, "saveNote"));
-    QTRY_COMPARE(server.requests.size(), 1);
+    QVERIFY(waitUntil([&] { return (server.requests.size()) == (1); }));
+    QCOMPARE(server.requests.size(), 1);
     const auto request = server.requests.first();
     const auto body = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
     QCOMPARE(body.value(QStringLiteral("minimum_rank")).toInt(), 60);
@@ -602,7 +627,8 @@ void EditorUiTests::liveServerContract()
     QCOMPARE(payload.value(QStringLiteral("attachments")).toArray().size(), 1);
     const auto target = directory.filePath(QStringLiteral("downloaded.txt"));
     api.downloadAttachment(attachmentId, target, 1024 * 1024);
-    QTRY_COMPARE(downloads.size(), 1);
+    QVERIFY(waitUntil([&] { return (downloads.size()) == (1); }));
+    QCOMPARE(downloads.size(), 1);
     QFile downloaded(target);
     QVERIFY(downloaded.open(QIODevice::ReadOnly));
     QCOMPARE(downloaded.readAll(), body.toUtf8());
@@ -631,12 +657,12 @@ void EditorUiTests::liveServerContract()
     QSignalSpy workerFailures(&worker, &ApiClient::requestFailed);
     QVERIFY(worker.configureServer(QUrl(serverUrl), true, &error));
     worker.registerMember(invitation, QStringLiteral("ui.worker"), QStringLiteral("Copper falcon maps quiet valleys 84!"), QStringLiteral("UI Worker"));
-    QTRY_VERIFY(!workerReceived.isEmpty() || !workerFailures.isEmpty());
+    QVERIFY(waitUntil([&] { return !workerReceived.isEmpty() || !workerFailures.isEmpty(); }));
     QVERIFY2(workerFailures.isEmpty(), workerFailures.isEmpty() ? "" : qPrintable(workerFailures.first().at(2).toString()));
     QVERIFY(worker.isConfigured());
     workerReceived.clear();
     worker.fetchCapabilities(QStringLiteral("Workspace"));
-    QTRY_VERIFY(!workerReceived.isEmpty() || !workerFailures.isEmpty());
+    QVERIFY(waitUntil([&] { return !workerReceived.isEmpty() || !workerFailures.isEmpty(); }));
     QVERIFY2(workerFailures.isEmpty(), workerFailures.isEmpty() ? "" : qPrintable(workerFailures.first().at(2).toString()));
     const auto workerCapabilities = workerReceived.first().at(1).toJsonObject();
     QVERIFY(!workerCapabilities.value(QStringLiteral("permissions")).toArray().contains(QStringLiteral("roles.read")));
@@ -645,14 +671,15 @@ void EditorUiTests::liveServerContract()
     team.setCapabilities(workerCapabilities);
     team.refreshAll();
     auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
-    QTRY_VERIFY(areas->count() > 0);
+    QVERIFY(waitUntil([&] { return areas->count() > 0; }));
     auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
     QVERIFY(composer->isEnabled());
     composer->setText(QStringLiteral("Worker reply"));
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
-    QTRY_VERIFY(composer->text().isEmpty());
+    QVERIFY(waitUntil([&] { return composer->text().isEmpty(); }));
     auto *messageList = team.findChild<QTreeWidget *>(QStringLiteral("messageList"));
-    QTRY_COMPARE(messageList->topLevelItemCount(), 2);
+    QVERIFY(waitUntil([&] { return (messageList->topLevelItemCount()) == (2); }));
+    QCOMPARE(messageList->topLevelItemCount(), 2);
     QCOMPARE(messageList->topLevelItem(1)->text(2), QStringLiteral("Worker reply"));
     QTest::qWait(100);
     QCOMPARE(workerFailures.size(), 0);
@@ -662,9 +689,10 @@ void EditorUiTests::liveServerContract()
     QVERIFY(window.m_api->configureServer(QUrl(serverUrl), true, &error));
     QSignalSpy windowFailures(window.m_api, &ApiClient::requestFailed);
     window.m_api->login(QStringLiteral("ui.worker"), QStringLiteral("Copper falcon maps quiet valleys 84!"));
-    QTRY_COMPARE(window.m_currentProject, QStringLiteral("Workspace"));
+    QVERIFY(waitUntil([&] { return (window.m_currentProject) == (QStringLiteral("Workspace")); }));
+    QCOMPARE(window.m_currentProject, QStringLiteral("Workspace"));
     auto *windowAreas = window.m_teamWorkspace->findChild<QListWidget *>(QStringLiteral("areaList"));
-    QTRY_VERIFY(windowAreas->count() > 0);
+    QVERIFY(waitUntil([&] { return windowAreas->count() > 0; }));
     QVERIFY(window.m_teamWorkspace->findChild<QLineEdit *>(QStringLiteral("messageComposer"))->isEnabled());
     QTest::qWait(100);
     QCOMPARE(windowFailures.size(), 0);
