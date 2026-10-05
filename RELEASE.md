@@ -1,6 +1,6 @@
 # JSON API Forge v0.5.2
 
-**Status: in development; publication is a separate manual action.** This release covers the canonical server distribution from `main`. Editor, Python SDK and example applications retain their independent branches, versions and release ownership.
+**Status: publication candidate; publication is a separate manual action.** This release covers the canonical server distribution from `main`. Editor, Python SDK and example applications retain their independent branches, versions and release ownership.
 
 ## Release summary
 
