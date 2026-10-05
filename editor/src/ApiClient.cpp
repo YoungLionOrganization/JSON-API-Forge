@@ -4,6 +4,7 @@
 #include "EditorSettings.hpp"
 
 #include <QDir>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
 #include <QHostAddress>
@@ -15,6 +16,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPointer>
+#include <QRunnable>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSharedPointer>
@@ -279,11 +281,13 @@ ApiClient::ApiClient(QObject *parent)
 {
     // A management session must never leak to a desktop's ambient HTTP proxy.
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+    m_filePool.setMaxThreadCount(1);
 }
 
 ApiClient::~ApiClient()
 {
     clearCredentials();
+    m_filePool.waitForDone();
 }
 
 bool ApiClient::normalizeServerUrl(const QUrl &input, bool allowInsecureHttp, QUrl *normalized,
@@ -382,6 +386,7 @@ void ApiClient::clearSession()
 void ApiClient::cancelActiveRequests()
 {
     ++m_requestGeneration;
+    for (const auto &job : m_fileJobs) { job->store(true); }
     const auto replies = m_network.findChildren<QNetworkReply *>(QString(),
                                                                  Qt::FindDirectChildrenOnly);
     for (auto *reply : replies) {
@@ -390,6 +395,17 @@ void ApiClient::cancelActiveRequests()
             reply->abort();
         }
     }
+}
+
+void ApiClient::cancelFileTransfers()
+{
+    for (const auto &job : m_fileJobs) { job->store(true); }
+    for (auto *reply : m_network.findChildren<QNetworkReply *>()) {
+        if (reply->property("forgeFileTransfer").toBool() && reply->isRunning()) {
+            reply->setProperty("forgeUserCanceled", true); reply->abort();
+        }
+    }
+    fail(QStringLiteral("team-attachment-cancel"), 0, QStringLiteral("File transfer canceled."), QStringLiteral("canceled"));
 }
 
 void ApiClient::applyPreferences(const EditorPreferences &preferences)
@@ -518,6 +534,7 @@ void ApiClient::send(const QString &operation, QNetworkAccessManager::Operation 
         return;
     }
     reply->setProperty("forgeLogout", operation == QStringLiteral("auth-logout"));
+    reply->setProperty("forgeBackground", profile == RequestProfile::Background);
     auto *deadline = new QTimer(reply);
     deadline->setSingleShot(true);
     connect(deadline, &QTimer::timeout, reply, [reply] {
@@ -549,7 +566,8 @@ void ApiClient::trackJsonReply(QNetworkReply *reply, const QString &operation,
 {
     reply->setReadBufferSize(m_maxResponseBytes + 1);
     ++m_activeRequests;
-    emit connectionActivityChanged(true);
+    const bool foreground = !reply->property("forgeBackground").toBool();
+    if (foreground) { ++m_foregroundRequests; emit connectionActivityChanged(true); }
     const auto buffer = QSharedPointer<QByteArray>::create();
     const auto tooLarge = QSharedPointer<bool>::create(false);
     connect(reply, &QNetworkReply::readyRead, this, [this, reply, buffer, tooLarge]() {
@@ -573,7 +591,7 @@ void ApiClient::trackJsonReply(QNetworkReply *reply, const QString &operation,
     });
     connect(reply, &QNetworkReply::finished, this,
             [this, reply, operation, buffer, tooLarge, authenticationRequired, mutation,
-             retryAttempt, retryRequest]() {
+             retryAttempt, retryRequest, foreground]() {
                 if (reply->isOpen()) {
                     buffer->append(reply->read(qMax<qint64>(0, m_maxResponseBytes - buffer->size()) + 1));
                 }
@@ -581,7 +599,10 @@ void ApiClient::trackJsonReply(QNetworkReply *reply, const QString &operation,
                     *tooLarge = true;
                 }
                 m_activeRequests = qMax(0, m_activeRequests - 1);
-                emit connectionActivityChanged(m_activeRequests > 0);
+                if (foreground) {
+                    m_foregroundRequests = qMax(0, m_foregroundRequests - 1);
+                    emit connectionActivityChanged(m_foregroundRequests > 0);
+                }
                 const auto statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
                 const auto redirect = reply->attribute(QNetworkRequest::RedirectionTargetAttribute);
                 const bool timedOut = reply->property("forgeTimedOut").toBool();
@@ -910,7 +931,7 @@ void ApiClient::fetchMessages(const QString &areaId)
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("limit"), QStringLiteral("200"));
     send(QStringLiteral("team-messages:%1").arg(areaId), QNetworkAccessManager::GetOperation,
-         {QStringLiteral("areas"), areaId, QStringLiteral("messages")}, {}, query);
+         {QStringLiteral("areas"), areaId, QStringLiteral("messages")}, {}, query, true, {}, RequestProfile::Background);
 }
 
 void ApiClient::postMessage(const QString &areaId, const QString &body, bool announcement)
@@ -925,7 +946,7 @@ void ApiClient::postMessage(const QString &areaId, const QString &body, bool ann
 void ApiClient::fetchAttachments(const QString &areaId)
 {
     send(QStringLiteral("team-attachments:%1").arg(areaId), QNetworkAccessManager::GetOperation,
-         {QStringLiteral("areas"), areaId, QStringLiteral("attachments")});
+         {QStringLiteral("areas"), areaId, QStringLiteral("attachments")}, {}, {}, true, {}, RequestProfile::Background);
 }
 
 void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath, qsizetype maxBytes)
@@ -939,6 +960,7 @@ void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath,
     const QFileInfo info(filePath);
     const auto name = info.fileName();
     if (!info.exists() || !info.isFile() || info.isSymLink() || name.isEmpty()
+        || maxBytes < 1 || maxBytes > MaximumAttachmentSnapshot || info.size() > maxBytes
         || name.size() > 255 || name.contains(u'\r') || name.contains(u'\n') || name.contains(u'"')
         || name.contains(u';') || name.contains(QChar::Null)) {
         fail(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0,
@@ -946,18 +968,30 @@ void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath,
              QStringLiteral("validation"));
         return;
     }
-    QByteArray snapshot;
-    QString snapshotError;
-    if (!safeAttachmentSnapshot(info.absoluteFilePath(), maxBytes, &snapshot, &snapshotError)) {
-        fail(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0, snapshotError,
-             QStringLiteral("validation"));
-        return;
-    }
+    // Read and verify an immutable file snapshot away from the GUI thread.
+    const auto generation = m_requestGeneration;
+    const auto canceled = QSharedPointer<std::atomic_bool>::create(false);
+    m_fileJobs.append(canceled);
+    emit fileTransferProgress(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0, QStringLiteral("Preparing %1…").arg(name));
+    m_filePool.start(QRunnable::create([this, areaId, name, path = info.absoluteFilePath(), maxBytes, generation, canceled] {
+        QByteArray snapshot;
+        QString error;
+        const bool valid = !canceled->load() && safeAttachmentSnapshot(path, maxBytes, &snapshot, &error);
+        QMetaObject::invokeMethod(this, [this, areaId, name, snapshot, error, valid, generation, canceled] {
+            m_fileJobs.removeAll(canceled);
+            if (generation != m_requestGeneration || canceled->load()) { return; }
+            if (!valid) { fail(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0, error, QStringLiteral("validation")); return; }
+            postAttachment(areaId, name, snapshot);
+        }, Qt::QueuedConnection);
+    }));
+}
+
+void ApiClient::postAttachment(const QString &areaId, const QString &name, const QByteArray &snapshot)
+{
     auto *multipart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
     QHttpPart part;
     part.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/octet-stream"));
-    part.setHeader(QNetworkRequest::ContentDispositionHeader,
-                   QStringLiteral("form-data; name=\"upload\"; filename=\"%1\"").arg(name));
+    part.setRawHeader("Content-Disposition", QByteArray("form-data; name=\"upload\"; filename=\"") + name.toUtf8() + QByteArray("\""));
     part.setBody(snapshot);
     multipart->append(part);
 
@@ -968,6 +1002,13 @@ void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath,
     hardenRequest(request);
     request.setTransferTimeout(m_uploadTimeoutMs);
     auto *reply = m_network.post(request, multipart);
+    reply->setProperty("forgeFileTransfer", true);
+    emit fileTransferProgress(QStringLiteral("team-attachment-upload:%1").arg(areaId), 0, QStringLiteral("Uploading %1…").arg(name));
+    connect(reply, &QNetworkReply::uploadProgress, this, [this, areaId, name](qint64 sent, qint64 total) {
+        const int percent = total > 0 ? static_cast<int>(qBound<qint64>(0LL, sent * 100 / total, 100LL)) : 0;
+        emit fileTransferProgress(QStringLiteral("team-attachment-upload:%1").arg(areaId), percent,
+            percent == 100 ? QStringLiteral("Server is saving %1…").arg(name) : QStringLiteral("Uploading %1 · %2%").arg(name).arg(percent));
+    });
     multipart->setParent(reply);
     auto *deadline = new QTimer(reply);
     deadline->setSingleShot(true);
@@ -981,10 +1022,10 @@ void ApiClient::uploadAttachment(const QString &areaId, const QString &filePath,
 }
 
 void ApiClient::downloadAttachment(const QString &attachmentId, const QString &targetPath,
-                                   qsizetype maxBytes)
+                                   qsizetype maxBytes, const QString &sha256)
 {
     const auto operation = QStringLiteral("team-attachment-download");
-    if (!isConfigured() || targetPath.isEmpty() || maxBytes < 1) {
+    if (!isConfigured() || targetPath.isEmpty() || maxBytes < 1 || maxBytes > MaximumAttachmentSnapshot) {
         fail(operation, 0, QStringLiteral("A signed-in server and safe target path are required."),
              QStringLiteral("validation"));
         return;
@@ -995,6 +1036,11 @@ void ApiClient::downloadAttachment(const QString &attachmentId, const QString &t
     hardenRequest(request);
     request.setTransferTimeout(m_downloadTimeoutMs);
     auto *reply = m_network.get(request);
+    reply->setProperty("forgeFileTransfer", true);
+    connect(reply, &QNetworkReply::downloadProgress, this, [this, operation](qint64 received, qint64 total) {
+        const int percent = total > 0 ? static_cast<int>(qBound<qint64>(0LL, received * 100 / total, 100LL)) : 0;
+        emit fileTransferProgress(operation, percent, QStringLiteral("Downloading · %1 KiB").arg(received / 1024));
+    });
     auto *deadline = new QTimer(reply);
     deadline->setSingleShot(true);
     connect(deadline, &QTimer::timeout, reply, [reply] {
@@ -1005,6 +1051,7 @@ void ApiClient::downloadAttachment(const QString &attachmentId, const QString &t
     deadline->start(m_downloadTimeoutMs);
     reply->setReadBufferSize(maxBytes + 1);
     ++m_activeRequests;
+    ++m_foregroundRequests;
     emit connectionActivityChanged(true);
     const auto buffer = QSharedPointer<QByteArray>::create();
     const auto tooLarge = QSharedPointer<bool>::create(false);
@@ -1027,7 +1074,7 @@ void ApiClient::downloadAttachment(const QString &attachmentId, const QString &t
         emit tlsRejected(descriptions.join(QStringLiteral("; ")));
     });
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, operation, targetPath, buffer, tooLarge, maxBytes]() {
+            [this, reply, operation, targetPath, buffer, tooLarge, maxBytes, sha256]() {
                 if (reply->isOpen()) {
                     buffer->append(reply->read(qMax<qint64>(0, maxBytes - buffer->size()) + 1));
                 }
@@ -1035,11 +1082,13 @@ void ApiClient::downloadAttachment(const QString &attachmentId, const QString &t
                     *tooLarge = true;
                 }
                 m_activeRequests = qMax(0, m_activeRequests - 1);
-                emit connectionActivityChanged(m_activeRequests > 0);
+                m_foregroundRequests = qMax(0, m_foregroundRequests - 1);
+                emit connectionActivityChanged(m_foregroundRequests > 0);
                 const auto statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
                 const auto redirect = reply->attribute(QNetworkRequest::RedirectionTargetAttribute);
                 const bool timedOut = reply->property("forgeTimedOut").toBool();
                 const bool tlsRejected = reply->property("forgeTlsRejected").toBool();
+                const bool userCanceled = reply->property("forgeUserCanceled").toBool();
                 if (*tooLarge) {
                     fail(operation, statusCode,
                          QStringLiteral("Attachment exceeded the server-advertised size limit."),
@@ -1052,7 +1101,7 @@ void ApiClient::downloadAttachment(const QString &attachmentId, const QString &t
                     if (statusCode == 401) {
                         clearSession();
                     }
-                    const auto category = tlsRejected ? QStringLiteral("tls")
+                    const auto category = userCanceled ? QStringLiteral("canceled") : tlsRejected ? QStringLiteral("tls")
                         : timedOut ? QStringLiteral("timeout")
                         : statusCode == 401 ? QStringLiteral("authentication")
                         : statusCode == 403 ? QStringLiteral("authorization")
@@ -1065,16 +1114,28 @@ void ApiClient::downloadAttachment(const QString &attachmentId, const QString &t
                          QStringLiteral("Network error %1; HTTP status %2.")
                              .arg(static_cast<int>(reply->error())).arg(statusCode));
                 } else {
-                    QSaveFile output(targetPath);
-                    if (!output.open(QIODevice::WriteOnly) || output.write(*buffer) != buffer->size()
-                        || !output.commit()) {
-                        output.cancelWriting();
-                        fail(operation, 0,
-                             QStringLiteral("The attachment could not be saved atomically."),
-                             QStringLiteral("filesystem"));
-                    } else {
-                        emit fileDownloaded(operation, targetPath);
-                    }
+                    const auto generation = m_requestGeneration;
+                    const auto canceled = QSharedPointer<std::atomic_bool>::create(false);
+                    m_fileJobs.append(canceled);
+                    emit fileTransferProgress(operation, 100, QStringLiteral("Verifying and saving file…"));
+                    m_filePool.start(QRunnable::create([this, operation, targetPath, buffer, sha256, generation, canceled] {
+                        const bool integrity = sha256.isEmpty() || QString::fromLatin1(QCryptographicHash::hash(*buffer, QCryptographicHash::Sha256).toHex()) == sha256.toLower();
+                        QSaveFile output(targetPath);
+                        bool saved = integrity && !canceled->load() && output.open(QIODevice::WriteOnly);
+                        for (qsizetype offset = 0; saved && offset < buffer->size(); offset += 1024 * 1024) {
+                            const auto length = qMin<qsizetype>(1024 * 1024, buffer->size() - offset);
+                            saved = !canceled->load() && output.write(buffer->constData() + offset, length) == length;
+                        }
+                        saved = saved && !canceled->load() && output.commit();
+                        if (!saved) { output.cancelWriting(); }
+                        QMetaObject::invokeMethod(this, [this, operation, targetPath, saved, integrity, generation, canceled] {
+                            m_fileJobs.removeAll(canceled);
+                            if (generation != m_requestGeneration || canceled->load()) { return; }
+                            if (saved) { emit fileDownloaded(operation, targetPath); }
+                            else { fail(operation, 0, integrity ? QStringLiteral("The file could not be saved. Choose a writable folder and try again.")
+                                                               : QStringLiteral("File integrity verification failed. The destination was preserved."), QStringLiteral("filesystem")); }
+                        }, Qt::QueuedConnection);
+                    }));
                 }
                 reply->deleteLater();
             });
@@ -1133,6 +1194,12 @@ void ApiClient::createCallTicket(const QString &callId)
 {
     send(QStringLiteral("team-call-ticket:%1").arg(callId), QNetworkAccessManager::PostOperation,
          {QStringLiteral("calls"), callId, QStringLiteral("ticket")});
+}
+
+void ApiClient::fetchCalls(const QString &areaId)
+{
+    send(QStringLiteral("team-calls:%1").arg(areaId), QNetworkAccessManager::GetOperation,
+         {QStringLiteral("areas"), areaId, QStringLiteral("calls")}, {}, {}, true, {}, RequestProfile::Background);
 }
 
 void ApiClient::fetchAudit(const QString &project)

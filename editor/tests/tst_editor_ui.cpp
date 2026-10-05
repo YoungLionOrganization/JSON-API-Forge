@@ -1,4 +1,5 @@
 #include "ApiClient.hpp"
+#include "ChatView.hpp"
 #include "CodeEditor.hpp"
 #include "DocumentCodec.hpp"
 #include "EditorSettings.hpp"
@@ -8,6 +9,8 @@
 #include "VisualDesigner.hpp"
 
 #include <QApplication>
+#include <QCryptographicHash>
+#include <QMimeData>
 #include <QDialogButtonBox>
 #include <QComboBox>
 #include <QSpinBox>
@@ -159,6 +162,9 @@ private slots:
     void resetClearsSessionData();
     void founderWildcardPermissions();
     void restrictedNotesCarryReaderRank();
+    void conversationKeepsSelectionAndEscapesContent();
+    void composerSupportsMultilineAndFilePaste();
+    void backgroundRefreshAndDownloadIntegrity();
     void liveServerContract();
 
 private:
@@ -443,7 +449,7 @@ void EditorUiTests::spacesExplainAvailabilityAndKeepComposerVisible()
     QVERIFY(availability->text().contains(QStringLiteral("Update")));
     team.setCapabilities(capabilities({QStringLiteral("*")}));
     deliver(api, QStringLiteral("team-areas:*"), spaces());
-    auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    auto *composer = team.findChild<ChatComposer *>(QStringLiteral("messageComposer"));
     QVERIFY(composer->isEnabled());
     for (auto *button : team.findChildren<QPushButton *>()) {
         if (button->property("forgePermission") == QStringLiteral("calls.start")) { QVERIFY(button->isEnabled()); }
@@ -486,7 +492,7 @@ void EditorUiTests::founderStartupRecoversCapabilityFailure()
     QVERIFY(window.m_api->setSessionToken(TestSession, &error));
     deliver(*window.m_api, QStringLiteral("auth-login"), {{QStringLiteral("profile"), QJsonObject{{QStringLiteral("username"), QStringLiteral("founder")}}}});
     QVERIFY(waitUntil([&] { return window.m_currentProject == QStringLiteral("Workspace"); }));
-    auto *composer = window.m_teamWorkspace->findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    auto *composer = window.m_teamWorkspace->findChild<ChatComposer *>(QStringLiteral("messageComposer"));
     QVERIFY(waitUntil([&] { return composer->isEnabled(); }));
     QVERIFY(window.m_teamWorkspace->findChild<QTabWidget *>(QStringLiteral("teamTabs"))->isTabEnabled(0));
     QVERIFY(window.windowTitle().contains(QStringLiteral("v0.5.2")));
@@ -555,7 +561,7 @@ void EditorUiTests::workerRefreshRespectsPermissionsAndGlobalScope()
         requestedGlobalSpaces = requestedGlobalSpaces || request.contains("/areas?project=*");
     }
     QVERIFY(requestedGlobalSpaces);
-    auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    auto *composer = team.findChild<ChatComposer *>(QStringLiteral("messageComposer"));
     QVERIFY(!composer->isEnabled());
 }
 
@@ -578,8 +584,8 @@ void EditorUiTests::failedMessagePreservesDraftAndPreventsDuplicatePosts()
     TeamWorkspace team(&api);
     team.setCapabilities(capabilities({QStringLiteral("areas.read"), QStringLiteral("messages.read"), QStringLiteral("messages.write")}));
     deliver(api, QStringLiteral("team-areas:*"), spaces());
-    auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
-    composer->setText(QStringLiteral("Keep this draft"));
+    auto *composer = team.findChild<ChatComposer *>(QStringLiteral("messageComposer"));
+    composer->setPlainText(QStringLiteral("Keep this draft"));
     QSignalSpy failed(&api, &ApiClient::requestFailed);
     QSignalSpy acknowledged(&api, &ApiClient::jsonReceived);
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
@@ -587,9 +593,9 @@ void EditorUiTests::failedMessagePreservesDraftAndPreventsDuplicatePosts()
     QVERIFY(waitUntil([&] { return (failed.size()) == (1); }));
     QCOMPARE(failed.size(), 1);
     QCOMPARE(posts, 1);
-    QCOMPARE(composer->text(), QStringLiteral("Keep this draft"));
+    QCOMPARE(composer->toPlainText(), QStringLiteral("Keep this draft"));
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
-    composer->setText(QStringLiteral("Newer unsent text"));
+    composer->setPlainText(QStringLiteral("Newer unsent text"));
     QVERIFY(waitUntil([&] {
         for (const auto &record : acknowledged) {
             if (record.at(0).toString().startsWith(QStringLiteral("team-message:"))) { return true; }
@@ -597,11 +603,11 @@ void EditorUiTests::failedMessagePreservesDraftAndPreventsDuplicatePosts()
         return false;
     }));
     QCOMPARE(posts, 2);
-    QCOMPARE(composer->text(), QStringLiteral("Newer unsent text"));
+    QCOMPARE(composer->toPlainText(), QStringLiteral("Newer unsent text"));
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
-    QVERIFY(waitUntil([&] { return composer->text().isEmpty(); }));
+    QVERIFY(waitUntil([&] { return composer->toPlainText().isEmpty(); }));
     QCOMPARE(posts, 3);
-    QVERIFY(composer->text().isEmpty());
+    QVERIFY(composer->toPlainText().isEmpty());
 }
 
 void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
@@ -616,19 +622,19 @@ void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
     team.setProject(QStringLiteral("Alpha"));
     deliver(api, QStringLiteral("team-areas:Alpha"), spaces());
     auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
-    auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
-    auto *messageList = team.findChild<QTreeWidget *>(QStringLiteral("messageList"));
-    composer->setText(QStringLiteral("Alpha draft"));
+    auto *composer = team.findChild<ChatComposer *>(QStringLiteral("messageComposer"));
+    auto *messageList = team.findChild<ChatView *>(QStringLiteral("messageList"));
+    composer->setPlainText(QStringLiteral("Alpha draft"));
     areas->setCurrentRow(1);
-    composer->setText(QStringLiteral("Beta draft"));
+    composer->setPlainText(QStringLiteral("Beta draft"));
     deliver(api, QStringLiteral("team-messages:alpha"), messages(QStringLiteral("wrong area")));
-    QCOMPARE(messageList->topLevelItemCount(), 0);
+    QCOMPARE(messageList->messageCount(), 0);
     deliver(api, QStringLiteral("team-messages:beta"), messages(QStringLiteral("correct area")));
-    QCOMPARE(messageList->topLevelItem(0)->text(2), QStringLiteral("correct area"));
+    QCOMPARE(messageList->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("correct area"));
     areas->setCurrentRow(0);
-    QCOMPARE(composer->text(), QStringLiteral("Alpha draft"));
+    QCOMPARE(composer->toPlainText(), QStringLiteral("Alpha draft"));
     deliver(api, QStringLiteral("team-areas:Alpha"), spaces());
-    QCOMPARE(composer->text(), QStringLiteral("Alpha draft"));
+    QCOMPARE(composer->toPlainText(), QStringLiteral("Alpha draft"));
     team.setProject(QStringLiteral("Beta"));
     deliver(api, QStringLiteral("team-areas:Alpha"), spaces());
     QCOMPARE(areas->count(), 0);
@@ -666,14 +672,14 @@ void EditorUiTests::resetClearsSessionData()
 {
     ApiClient api;
     TeamWorkspace team(&api);
-    team.findChild<QLineEdit *>(QStringLiteral("messageComposer"))->setText(QStringLiteral("private message"));
+    team.findChild<ChatComposer *>(QStringLiteral("messageComposer"))->setPlainText(QStringLiteral("private message"));
     team.findChild<QLineEdit *>(QStringLiteral("noteTitle"))->setText(QStringLiteral("private note"));
     team.findChild<QTextEdit *>(QStringLiteral("noteBody"))->setPlainText(QStringLiteral("private body"));
     auto *rows = team.findChild<QTableWidget *>(QStringLiteral("databaseRows"));
     rows->setRowCount(5);
     rows->setColumnCount(4);
     team.reset();
-    QVERIFY(team.findChild<QLineEdit *>(QStringLiteral("messageComposer"))->text().isEmpty());
+    QVERIFY(team.findChild<ChatComposer *>(QStringLiteral("messageComposer"))->toPlainText().isEmpty());
     QVERIFY(team.findChild<QLineEdit *>(QStringLiteral("noteTitle"))->text().isEmpty());
     QVERIFY(team.findChild<QTextEdit *>(QStringLiteral("noteBody"))->toPlainText().isEmpty());
     QCOMPARE(rows->rowCount(), 0);
@@ -701,7 +707,7 @@ void EditorUiTests::founderWildcardPermissions()
     }
     QVERIFY(roles && audit);
     deliver(api, QStringLiteral("team-areas:*"), spaces());
-    QVERIFY(team.findChild<QLineEdit *>(QStringLiteral("messageComposer"))->isEnabled());
+    QVERIFY(team.findChild<ChatComposer *>(QStringLiteral("messageComposer"))->isEnabled());
 }
 
 void EditorUiTests::restrictedNotesCarryReaderRank()
@@ -725,6 +731,88 @@ void EditorUiTests::restrictedNotesCarryReaderRank()
     const auto body = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
     QCOMPARE(body.value(QStringLiteral("minimum_rank")).toInt(), 60);
     QCOMPARE(body.value(QStringLiteral("visibility")).toString(), QStringLiteral("restricted"));
+}
+
+void EditorUiTests::conversationKeepsSelectionAndEscapesContent()
+{
+    ChatView view;
+    QVERIFY(view.setConversation({}, {}));
+    QVERIFY(view.toPlainText().contains(QStringLiteral("beginning")));
+    const QJsonArray records{QJsonObject{{QStringLiteral("body"), QStringLiteral("<img src='https://evil.test/pixel'>\nhello")},
+                                        {QStringLiteral("display_name"), QStringLiteral("<Founder>")}}};
+    QVERIFY(view.setConversation(records, {}));
+    QVERIFY(view.toPlainText().contains(QStringLiteral("<Founder>")));
+    QVERIFY(view.toPlainText().contains(QStringLiteral("<img src=")));
+    auto cursor = view.textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, 8);
+    view.setTextCursor(cursor);
+    const auto selected = view.textCursor().selectedText();
+    QVERIFY(!view.setConversation(records, {}));
+    QCOMPARE(view.textCursor().selectedText(), selected);
+    QSignalSpy links(&view, &ChatView::attachmentRequested);
+    view.anchorClicked(QUrl(QStringLiteral("forge-file:test-id")));
+    QCOMPARE(links.size(), 1);
+    QCOMPARE(links.first().first().toString(), QStringLiteral("test-id"));
+    view.clearConversation();
+    QVERIFY(view.setConversation({}, {}));
+}
+
+void EditorUiTests::composerSupportsMultilineAndFilePaste()
+{
+    ChatComposer composer;
+    QSignalSpy send(&composer, &ChatComposer::sendRequested);
+    QSignalSpy files(&composer, &ChatComposer::fileDropped);
+    composer.setPlainText(QStringLiteral("first"));
+    composer.moveCursor(QTextCursor::End);
+    QTest::keyClick(&composer, Qt::Key_Return, Qt::ShiftModifier);
+    QTest::keyClicks(&composer, QStringLiteral("second"));
+    QCOMPARE(composer.toPlainText(), QStringLiteral("first\nsecond"));
+    QCOMPARE(send.size(), 0);
+    QTest::keyClick(&composer, Qt::Key_Return);
+    QCOMPARE(send.size(), 1);
+    composer.setPlainText(QString(8100, u'a'));
+    QCOMPARE(composer.toPlainText().size(), 8000);
+    QVERIFY(files.isEmpty());
+}
+
+void EditorUiTests::backgroundRefreshAndDownloadIntegrity()
+{
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    server.respond = [](const QByteArray &request) {
+        return WorkspaceServer::Response{request.startsWith("GET /__forge/editor/v1/attachments/")
+            ? QByteArray("downloaded content") : QByteArray("{\"messages\":[],\"attachments\":[],\"calls\":[]}"), QByteArray("200 OK"), 20};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    QSignalSpy activity(&api, &ApiClient::connectionActivityChanged);
+    QSignalSpy received(&api, &ApiClient::jsonReceived);
+    QSignalSpy failures(&api, &ApiClient::requestFailed);
+    QSignalSpy downloaded(&api, &ApiClient::fileDownloaded);
+    api.fetchMessages(QStringLiteral("alpha"));
+    api.fetchAttachments(QStringLiteral("alpha"));
+    api.fetchCalls(QStringLiteral("alpha"));
+    QVERIFY(waitUntil([&] { return received.size() == 3; }));
+    QVERIFY(activity.isEmpty());
+    QTemporaryDir directory;
+    const auto path = directory.filePath(QStringLiteral("existing.txt"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("keep original"); file.close();
+    api.downloadAttachment(QStringLiteral("test"), path, 1024, QString(64, u'0'));
+    QVERIFY(waitUntil([&] { return !failures.isEmpty(); }));
+    QVERIFY(downloaded.isEmpty());
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), QByteArray("keep original")); file.close();
+    failures.clear();
+    api.downloadAttachment(QStringLiteral("test"), path, 1024,
+        QString::fromLatin1(QCryptographicHash::hash(QByteArray("downloaded content"), QCryptographicHash::Sha256).toHex()));
+    QVERIFY(waitUntil([&] { return downloaded.size() == 1; }));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), QByteArray("downloaded content"));
+    QVERIFY(failures.isEmpty());
 }
 
 void EditorUiTests::liveServerContract()
@@ -793,7 +881,7 @@ void EditorUiTests::liveServerContract()
     QCOMPARE(payload.value(QStringLiteral("notes")).toArray().first().toObject().value(QStringLiteral("body")).toString(), body);
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
-    const auto source = directory.filePath(QStringLiteral("shared.txt"));
+    const auto source = directory.filePath(QStringLiteral("Türkçe paylaşım 👋.txt"));
     QFile file(source);
     QVERIFY(file.open(QIODevice::WriteOnly));
     file.write(body.toUtf8());
@@ -801,11 +889,13 @@ void EditorUiTests::liveServerContract()
     api.uploadAttachment(area, source, 1024 * 1024);
     QVERIFY(awaitPayload(QStringLiteral("team-attachment-upload:%1").arg(area)));
     const auto attachmentId = payload.value(QStringLiteral("id")).toString();
+    QCOMPARE(payload.value(QStringLiteral("original_name")).toString(), QFileInfo(source).fileName());
+    const auto attachmentSha = payload.value(QStringLiteral("sha256")).toString();
     api.fetchAttachments(area);
     QVERIFY(awaitPayload(QStringLiteral("team-attachments:%1").arg(area)));
     QCOMPARE(payload.value(QStringLiteral("attachments")).toArray().size(), 1);
     const auto target = directory.filePath(QStringLiteral("downloaded.txt"));
-    api.downloadAttachment(attachmentId, target, 1024 * 1024);
+    api.downloadAttachment(attachmentId, target, 1024 * 1024, attachmentSha);
     QVERIFY(waitUntil([&] { return (downloads.size()) == (1); }));
     QCOMPARE(downloads.size(), 1);
     QFile downloaded(target);
@@ -822,6 +912,9 @@ void EditorUiTests::liveServerContract()
     api.startCall(area, QStringLiteral("audio"));
     QVERIFY(awaitPayload(QStringLiteral("team-call:%1").arg(area)));
     const auto call = payload.value(QStringLiteral("id")).toString();
+    api.fetchCalls(area);
+    QVERIFY(awaitPayload(QStringLiteral("team-calls:%1").arg(area)));
+    QCOMPARE(payload.value(QStringLiteral("calls")).toArray().first().toObject().value(QStringLiteral("id")).toString(), call);
     api.createCallTicket(call);
     QVERIFY(awaitPayload(QStringLiteral("team-call-ticket:%1").arg(call)));
     QVERIFY(api.callClientUrl(payload.value(QStringLiteral("call_client_path")).toString(), payload.value(QStringLiteral("ticket")).toString()).isValid());
@@ -851,15 +944,15 @@ void EditorUiTests::liveServerContract()
     team.refreshAll();
     auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
     QVERIFY(waitUntil([&] { return areas->count() > 0; }));
-    auto *composer = team.findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    auto *composer = team.findChild<ChatComposer *>(QStringLiteral("messageComposer"));
     QVERIFY(composer->isEnabled());
-    composer->setText(QStringLiteral("Worker reply"));
+    composer->setPlainText(QStringLiteral("Worker reply"));
     QVERIFY(QMetaObject::invokeMethod(&team, "sendMessage"));
-    QVERIFY(waitUntil([&] { return composer->text().isEmpty(); }));
-    auto *messageList = team.findChild<QTreeWidget *>(QStringLiteral("messageList"));
-    QVERIFY(waitUntil([&] { return (messageList->topLevelItemCount()) == (2); }));
-    QCOMPARE(messageList->topLevelItemCount(), 2);
-    QCOMPARE(messageList->topLevelItem(1)->text(2), QStringLiteral("Worker reply"));
+    QVERIFY(waitUntil([&] { return composer->toPlainText().isEmpty(); }));
+    auto *messageList = team.findChild<ChatView *>(QStringLiteral("messageList"));
+    QVERIFY(waitUntil([&] { return (messageList->messageCount()) == (2); }));
+    QCOMPARE(messageList->messageCount(), 2);
+    QCOMPARE(messageList->messageAt(1).value(QStringLiteral("body")).toString(), QStringLiteral("Worker reply"));
     QTest::qWait(100);
     QCOMPARE(workerFailures.size(), 0);
     QCOMPARE(failures.size(), 0);
@@ -872,7 +965,7 @@ void EditorUiTests::liveServerContract()
     QCOMPARE(window.m_currentProject, QStringLiteral("Workspace"));
     auto *windowAreas = window.m_teamWorkspace->findChild<QListWidget *>(QStringLiteral("areaList"));
     QVERIFY(waitUntil([&] { return windowAreas->count() > 0; }));
-    QVERIFY(window.m_teamWorkspace->findChild<QLineEdit *>(QStringLiteral("messageComposer"))->isEnabled());
+    QVERIFY(window.m_teamWorkspace->findChild<ChatComposer *>(QStringLiteral("messageComposer"))->isEnabled());
     QTest::qWait(100);
     QCOMPARE(windowFailures.size(), 0);
     const auto screenshot = qEnvironmentVariable("FORGE_EDITOR_TEST_SCREENSHOT");
@@ -891,7 +984,7 @@ void EditorUiTests::liveServerContract()
     QVERIFY(founderWindow.m_api->configureServer(QUrl(serverUrl), true, &error));
     QSignalSpy founderWindowFailures(founderWindow.m_api, &ApiClient::requestFailed);
     founderWindow.m_api->login(QStringLiteral("ui.founder"), QStringLiteral("Granite river orbits seven moons 42!"));
-    auto *founderComposer = founderWindow.m_teamWorkspace->findChild<QLineEdit *>(QStringLiteral("messageComposer"));
+    auto *founderComposer = founderWindow.m_teamWorkspace->findChild<ChatComposer *>(QStringLiteral("messageComposer"));
     QVERIFY(waitUntil([&] { return founderComposer->isEnabled(); }));
     QCOMPARE(founderWindow.m_currentProject, QStringLiteral("Workspace"));
     for (auto *button : founderWindow.m_teamWorkspace->findChildren<QPushButton *>()) {
@@ -900,15 +993,19 @@ void EditorUiTests::liveServerContract()
     founderWindow.resize(1024, 640);
     founderWindow.show();
     QTest::qWait(60);
-    auto *founderMessages = founderWindow.m_teamWorkspace->findChild<QTreeWidget *>(QStringLiteral("messageList"));
+    auto *founderMessages = founderWindow.m_teamWorkspace->findChild<ChatView *>(QStringLiteral("messageList"));
     auto *founderAreas = founderWindow.m_teamWorkspace->findChild<QListWidget *>(QStringLiteral("areaList"));
     QVERIFY2(founderMessages->viewport()->height() >= 75, "Compact dock must show conversation rows, not just its header");
     QVERIFY2(founderAreas->viewport()->height() >= 35, "Compact dock must show the selected space");
     QVERIFY(founderWindow.rect().contains(QRect(founderComposer->mapTo(&founderWindow, QPoint(0, 0)), founderComposer->size())));
-    founderComposer->setText(QStringLiteral("Founder UI reply"));
+    founderComposer->setPlainText(QStringLiteral("Founder UI reply"));
     QTest::keyClick(founderComposer, Qt::Key_Return);
-    QVERIFY(waitUntil([&] { return founderComposer->text().isEmpty(); }));
-    QVERIFY(waitUntil([&] { return founderWindow.m_teamWorkspace->findChild<QTreeWidget *>(QStringLiteral("messageList"))->topLevelItemCount() == 3; }));
+    QVERIFY(waitUntil([&] { return founderComposer->toPlainText().isEmpty(); }));
+    QVERIFY(waitUntil([&] { return founderWindow.m_teamWorkspace->findChild<ChatView *>(QStringLiteral("messageList"))->messageCount() == 3; }));
+    // Exercise the actual chat file drop -> background snapshot -> multipart -> server acknowledgement flow.
+    founderMessages->fileDropped(source);
+    QVERIFY(waitUntil([&] { return founderWindow.m_teamWorkspace->findChild<QLabel *>(QStringLiteral("transferStatus"))->text().contains(QStringLiteral("successfully")); }, 10000));
+    QVERIFY(waitUntil([&] { return founderWindow.m_teamWorkspace->findChild<QTreeWidget *>(QStringLiteral("attachmentList"))->topLevelItemCount() == 2; }));
     QCOMPARE(founderWindowFailures.size(), 0);
     if (!screenshot.isEmpty()) { QVERIFY(founderWindow.grab().save(screenshot + QStringLiteral(".founder.png"))); }
     founderWindow.m_api->logout();

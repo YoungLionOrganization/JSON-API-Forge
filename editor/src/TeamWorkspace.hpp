@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <QHash>
 #include <QSet>
+#include <QPointer>
 
 class ApiClient;
 class QComboBox;
@@ -19,6 +20,10 @@ class QTabWidget;
 class QPushButton;
 class QTreeWidget;
 class QUrl;
+class QDialog;
+class ChatView;
+class ChatComposer;
+class QProgressBar;
 
 class TeamWorkspace final : public QWidget {
     Q_OBJECT
@@ -59,6 +64,11 @@ private:
     void buildNotesTab(QWidget *tab);
     void buildAuditTab(QWidget *tab);
     void openCall(const QUrl &url);
+    void shareFile(const QString &path);
+    void downloadFile(const QString &id);
+    void joinCall();
+    void startCall(const QString &mode);
+    void refreshSpaceExtras();
     [[nodiscard]] QString currentAreaId() const;
     [[nodiscard]] QString projectScope() const;
     [[nodiscard]] bool permits(const QString &permission) const;
@@ -72,8 +82,26 @@ private:
     QTreeWidget *m_members = nullptr;
     QTreeWidget *m_roles = nullptr;
     QListWidget *m_areas = nullptr;
-    QTreeWidget *m_messages = nullptr;
-    QLineEdit *m_message = nullptr;
+    ChatView *m_messages = nullptr;
+    ChatComposer *m_message = nullptr;
+    QJsonArray m_messageRecords;
+    QJsonArray m_attachmentRecords;
+    QJsonArray m_callRecords;
+    QString m_callsLoading;
+    QPointer<QDialog> m_callWindow;
+    bool m_browserCallNext = false;
+    QLabel *m_spaceTitle = nullptr;
+    QLabel *m_transferStatus = nullptr;
+    QProgressBar *m_transferProgress = nullptr;
+    QPushButton *m_cancelTransfer = nullptr;
+    QComboBox *m_activeCalls = nullptr;
+    QPushButton *m_joinCall = nullptr;
+    QString m_pendingCallArea;
+    QString m_pendingCallId;
+    QString m_pendingUploadArea;
+    bool m_transferBusy = false;
+    bool m_callDiscovery = false;
+    bool m_extrasLoading = false;
     QTreeWidget *m_attachments = nullptr;
     QTreeWidget *m_databaseTree = nullptr;
     QTableWidget *m_rows = nullptr;

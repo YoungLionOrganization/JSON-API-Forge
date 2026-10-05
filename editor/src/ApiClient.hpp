@@ -8,6 +8,9 @@
 #include <QPair>
 #include <QUrl>
 #include <QUrlQuery>
+#include <QThreadPool>
+#include <QSharedPointer>
+#include <atomic>
 
 #include <functional>
 
@@ -66,7 +69,7 @@ public:
     void postMessage(const QString &areaId, const QString &body, bool announcement = false);
     void fetchAttachments(const QString &areaId);
     void uploadAttachment(const QString &areaId, const QString &filePath, qsizetype maxBytes);
-    void downloadAttachment(const QString &attachmentId, const QString &targetPath, qsizetype maxBytes);
+    void downloadAttachment(const QString &attachmentId, const QString &targetPath, qsizetype maxBytes, const QString &sha256 = {});
     void fetchNotes(const QString &project);
     void createNote(const QString &project, const QString &areaId, const QString &title, const QString &body,
                     const QString &visibility, int minimumRank = 0);
@@ -75,6 +78,8 @@ public:
                            int offset = 0);
     void startCall(const QString &areaId, const QString &mode);
     void createCallTicket(const QString &callId);
+    void fetchCalls(const QString &areaId);
+    void cancelFileTransfers();
     void fetchAudit(const QString &project = {});
     [[nodiscard]] QUrl callClientUrl(const QString &path, const QString &ticket) const;
 
@@ -92,9 +97,11 @@ signals:
     void connectionActivityChanged(bool active);
     void tlsRejected(const QString &message);
     void fileDownloaded(const QString &operation, const QString &path);
+    void fileTransferProgress(const QString &operation, int percent, const QString &stage);
 
 private:
-    enum class RequestProfile { Normal, Authentication };
+    enum class RequestProfile { Normal, Authentication, Background };
+    void postAttachment(const QString &areaId, const QString &name, const QByteArray &snapshot);
 
     void send(const QString &operation, QNetworkAccessManager::Operation method, const QStringList &pathSegments,
               const QJsonObject &body = {}, const QUrlQuery &query = {}, bool authenticationRequired = true,
@@ -118,5 +125,8 @@ private:
     int m_safeGetRetries = 1;
     int m_retryBaseDelayMs = 750;
     int m_activeRequests = 0;
+    int m_foregroundRequests = 0;
+    QThreadPool m_filePool;
+    QList<QSharedPointer<std::atomic_bool>> m_fileJobs;
     quint64 m_requestGeneration = 0;
 };

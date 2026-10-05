@@ -1,6 +1,7 @@
 #include "TeamWorkspace.hpp"
 
 #include "ApiClient.hpp"
+#include "ChatView.hpp"
 #include "UiSizing.hpp"
 
 #include <QAbstractItemView>
@@ -12,6 +13,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QHBoxLayout>
@@ -25,6 +27,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QProgressBar>
 #include <QSpinBox>
 #include <QSignalBlocker>
 #include <QScrollBar>
@@ -124,10 +127,10 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
     auto *header = new QWidget(this);
     header->setObjectName(QStringLiteral("teamHeader"));
     auto *headerLayout = new QHBoxLayout(header);
-    headerLayout->setContentsMargins(12, 8, 12, 8);
+    headerLayout->setContentsMargins(10, 4, 10, 4);
     auto *mark = new QLabel(header);
     mark->setPixmap(QPixmap(QStringLiteral(":/branding/mark.png"))
-                        .scaled(42, 42, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                        .scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     m_profile->setTextFormat(Qt::PlainText);
     m_profile->setObjectName(QStringLiteral("teamProfile"));
     m_profile->setWordWrap(true);
@@ -183,7 +186,7 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
     connect(m_api, &ApiClient::requestFailedDetailed, this,
             [this](const QString &operation, int status, const QString &message, const QString &category,
                    const QString &, bool outcomeUncertain) {
-                if (category == QStringLiteral("canceled")) { return; }
+                if (category == QStringLiteral("canceled") && !operation.startsWith(QStringLiteral("team-attachment-"))) { return; }
                 handleError(operation, status, message);
                 if (operation.startsWith(QStringLiteral("team-")) && outcomeUncertain) {
                     m_feedback->setText(message + QStringLiteral(" Check whether the change reached the server before retrying."));
@@ -191,13 +194,24 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
             });
     connect(m_api, &ApiClient::fileDownloaded, this,
             [this](const QString &, const QString &path) {
+                m_transferBusy = false;
+                m_transferProgress->hide();
+                m_cancelTransfer->hide();
+                m_transferStatus->setText(QStringLiteral("Saved: %1").arg(QFileInfo(path).fileName()));
+                updateActions();
                 emit statusMessage(QStringLiteral("Attachment saved atomically to %1").arg(path));
             });
+    connect(m_api, &ApiClient::fileTransferProgress, this, [this](const QString &, int percent, const QString &stage) {
+        m_transferStatus->setText(stage);
+        m_transferProgress->setValue(qBound(0, percent, 100));
+    });
     connect(editProfile, &QPushButton::clicked, this, &TeamWorkspace::editProfile);
     m_poll->setInterval(5000);
     connect(m_poll, &QTimer::timeout, this, [this] {
-        if (isVisible() && m_api->isConfigured() && m_collaborationEnabled) {
+        if (isVisible() && m_tabs->currentIndex() == 0 && !window()->isMinimized()
+            && m_api->isConfigured() && m_collaborationEnabled) {
             requestMessages();
+            refreshSpaceExtras();
         }
     });
     updateActions();
@@ -300,26 +314,31 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     audio->setToolTip(QStringLiteral("Start an audio call in the selected space"));
     video->setToolTip(QStringLiteral("Start a video call in the selected space"));
     leftLayout->addLayout(callButtons);
+    m_activeCalls = new QComboBox(left);
+    m_activeCalls->setObjectName(QStringLiteral("activeCalls"));
+    m_activeCalls->setMinimumContentsLength(10);
+    m_activeCalls->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_joinCall = actionButton(QStringLiteral("Join call"), left, QStringLiteral("calls.join"), true);
+    m_joinCall->setObjectName(QStringLiteral("joinCallButton"));
+    auto *joinRow = new QHBoxLayout;
+    joinRow->addWidget(m_activeCalls, 1);
+    m_joinCall->setText(QStringLiteral("Join"));
+    joinRow->addWidget(m_joinCall);
+    leftLayout->addLayout(joinRow);
+    connect(m_joinCall, &QPushButton::clicked, this, &TeamWorkspace::joinCall);
     layout->addWidget(left);
 
     auto *right = new QWidget(tab);
     auto *rightLayout = new QVBoxLayout(right);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(5);
-    m_messages = new QTreeWidget(right);
-    m_messages->setObjectName(QStringLiteral("messageList"));
-    m_messages->setWordWrap(true);
-    m_messages->setTextElideMode(Qt::ElideNone);
-    m_messages->setColumnCount(3);
-    m_messages->setHeaderLabels(
-        {QStringLiteral("When"), QStringLiteral("Member"), QStringLiteral("Message")});
-    m_messages->setRootIsDecorated(false);
-    m_messages->setAlternatingRowColors(true);
-    m_messages->setMinimumHeight(0);
-    m_messages->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
-    m_messages->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_messages->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    m_messages->header()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_spaceTitle = new QLabel(QStringLiteral("# Choose a space"), right);
+    m_spaceTitle->setObjectName(QStringLiteral("conversationTitle"));
+    m_spaceTitle->setTextFormat(Qt::PlainText);
+    rightLayout->addWidget(m_spaceTitle);
+    m_messages = new ChatView(right);
+    connect(m_messages, &ChatView::attachmentRequested, this, &TeamWorkspace::downloadFile);
+    connect(m_messages, &ChatView::fileDropped, this, &TeamWorkspace::shareFile);
     rightLayout->addWidget(m_messages, 1);
     auto *attachmentHeader = new QHBoxLayout;
     auto *attachmentLabel = new QPushButton(QStringLiteral("Shared files ▸"), right);
@@ -330,10 +349,12 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     auto *refreshFiles = actionButton(QStringLiteral("Reload"), right, QStringLiteral("attachments.read"), true);
     attachmentHeader->addWidget(attachmentLabel);
     attachmentHeader->addStretch();
-    attachmentHeader->addWidget(upload);
     attachmentHeader->addWidget(download);
     attachmentHeader->addWidget(refreshFiles);
-    rightLayout->addLayout(attachmentHeader);
+    // Put the compact file controls in the conversation header, leaving room for messages.
+    rightLayout->removeWidget(m_spaceTitle);
+    attachmentHeader->insertWidget(0, m_spaceTitle, 1);
+    rightLayout->insertLayout(0, attachmentHeader);
     m_attachments = new QTreeWidget(right);
     m_attachments->setObjectName(QStringLiteral("attachmentList"));
     m_attachments->setColumnCount(4);
@@ -352,18 +373,36 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
         attachmentLabel->setText(expanded ? QStringLiteral("Shared files ▾") : QStringLiteral("Shared files ▸"));
     });
     auto *composer = new QHBoxLayout;
-    m_message = new QLineEdit(right);
-    m_message->setObjectName(QStringLiteral("messageComposer"));
-    m_message->setMaxLength(8000);
-    m_message->setPlaceholderText(QStringLiteral("Write to the selected project area…"));
+    m_message = new ChatComposer(right);
+    connect(m_message, &ChatComposer::fileDropped, this, &TeamWorkspace::shareFile);
     auto *send = new QPushButton(QStringLiteral("Send"), right);
     m_sendButton = send;
     send->setProperty("forgePermission", QStringLiteral("messages.write"));
     send->setProperty("forgeNeedsArea", true);
     send->setObjectName(QStringLiteral("primaryButton"));
     composer->addWidget(m_message, 1);
+    upload->setText(QStringLiteral("Attach…"));
+    upload->setToolTip(QStringLiteral("Share a file, or drop it directly into the conversation"));
+    composer->addWidget(upload);
     composer->addWidget(send);
     rightLayout->addLayout(composer);
+    auto *transfer = new QHBoxLayout;
+    m_transferStatus = new QLabel(QStringLiteral("Drop a file into the conversation to share it."), right);
+    m_transferStatus->setObjectName(QStringLiteral("transferStatus"));
+    m_transferStatus->setTextFormat(Qt::PlainText);
+    m_transferStatus->setWordWrap(true);
+    m_transferProgress = new QProgressBar(right);
+    m_transferProgress->setRange(0, 100);
+    m_transferProgress->setMaximumWidth(140);
+    m_transferProgress->hide();
+    m_cancelTransfer = new QPushButton(QStringLiteral("Cancel"), right);
+    m_cancelTransfer->setObjectName(QStringLiteral("cancelFileTransfer"));
+    m_cancelTransfer->hide();
+    connect(m_cancelTransfer, &QPushButton::clicked, m_api, &ApiClient::cancelFileTransfers);
+    transfer->addWidget(m_transferStatus, 1);
+    transfer->addWidget(m_transferProgress);
+    transfer->addWidget(m_cancelTransfer);
+    rightLayout->addLayout(transfer);
     layout->addWidget(right, 1);
     connect(refresh, &QPushButton::clicked, this, [this] {
         if (m_collaborationEnabled && permits(QStringLiteral("areas.read"))) {
@@ -373,7 +412,7 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     connect(create, &QPushButton::clicked, this, &TeamWorkspace::createArea);
     connect(m_areas, &QListWidget::itemSelectionChanged, this, &TeamWorkspace::selectArea);
     connect(send, &QPushButton::clicked, this, &TeamWorkspace::sendMessage);
-    connect(m_message, &QLineEdit::returnPressed, this, &TeamWorkspace::sendMessage);
+    connect(m_message, &ChatComposer::sendRequested, this, &TeamWorkspace::sendMessage);
     connect(audio, &QPushButton::clicked, this, &TeamWorkspace::startAudioCall);
     connect(video, &QPushButton::clicked, this, &TeamWorkspace::startVideoCall);
     connect(upload, &QPushButton::clicked, this, &TeamWorkspace::uploadAttachment);
@@ -383,6 +422,9 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
             m_api->fetchAttachments(currentAreaId());
         }
     });
+    download->hide(); refreshFiles->hide();
+    connect(attachmentLabel, &QPushButton::toggled, download, &QWidget::setVisible);
+    connect(attachmentLabel, &QPushButton::toggled, refreshFiles, &QWidget::setVisible);
     connect(m_attachments, &QTreeWidget::itemDoubleClicked,
             this, [this](QTreeWidgetItem *, int) { downloadAttachment(); });
 }
@@ -512,6 +554,7 @@ void TeamWorkspace::setCapabilities(const QJsonObject &capabilities)
     m_databaseEnabled = capabilities.value(QStringLiteral("database_browser")).toBool(false);
     m_collaborationEnabled = capabilities.value(QStringLiteral("collaboration")).toBool(false);
     m_callsEnabled = capabilities.value(QStringLiteral("calls")).toBool(false);
+    m_callDiscovery = capabilities.value(QStringLiteral("call_discovery")).toBool(false);
     m_rank = qBound(0, capabilities.value(QStringLiteral("rank")).toInt(), 1000);
     m_noteMinimumRank->setRange(0, m_rank);
     m_noteMinimumRank->setValue(m_rank);
@@ -556,6 +599,9 @@ void TeamWorkspace::updateActions()
             }
             if (button->property("forgeNeedsArea").toBool()) { enabled = enabled && areaSelected; }
             if (permission.startsWith(QStringLiteral("calls."))) { enabled = enabled && m_callsEnabled; }
+            if (permission.startsWith(QStringLiteral("calls."))) { enabled = enabled && m_pendingCallArea.isEmpty(); }
+            if (permission == QStringLiteral("attachments.write")) { enabled = enabled && !m_transferBusy; }
+            if (permission == QStringLiteral("attachments.read")) { enabled = enabled && !m_transferBusy; }
             button->setEnabled(enabled);
             if (!enabled) {
                 button->setToolTip(!m_api->isConfigured() ? QStringLiteral("Sign in to use this action")
@@ -569,6 +615,10 @@ void TeamWorkspace::updateActions()
     }
     m_sendButton->setEnabled(areaSelected && permits(QStringLiteral("messages.write")) && m_pendingMessageArea.isEmpty());
     m_message->setEnabled(areaSelected && permits(QStringLiteral("messages.write")));
+    m_joinCall->setEnabled(areaSelected && m_callsEnabled && m_callDiscovery && m_pendingCallArea.isEmpty()
+        && permits(QStringLiteral("calls.join")) && m_activeCalls->count() > 0);
+    m_activeCalls->setVisible(m_callDiscovery && m_activeCalls->count() > 0);
+    m_joinCall->setVisible(m_callDiscovery && m_activeCalls->count() > 0);
     m_noteSaveButton->setEnabled(collaboration && permits(QStringLiteral("notes.write")) && m_pendingNoteProject.isEmpty());
     m_noteTitle->setEnabled(collaboration && permits(QStringLiteral("notes.write")));
     m_noteBody->setReadOnly(!collaboration || !permits(QStringLiteral("notes.write")));
@@ -617,7 +667,8 @@ void TeamWorkspace::refreshProject()
     if (m_collaborationEnabled) {
         if (permits(QStringLiteral("areas.read"))) { m_api->fetchAreas(projectScope()); }
         if (permits(QStringLiteral("notes.read"))) { m_api->fetchNotes(projectScope()); }
-        if (permits(QStringLiteral("messages.read"))) { m_poll->start(); }
+        if (permits(QStringLiteral("messages.read")) || permits(QStringLiteral("attachments.read"))
+            || (m_callsEnabled && permits(QStringLiteral("calls.join")))) { m_poll->start(); }
     } else { m_poll->stop(); }
     if (m_databaseEnabled && !m_project.isEmpty()) { m_api->fetchDatabases(m_project); }
     if (permits(QStringLiteral("audit.read"))) { m_api->fetchAudit(projectScope()); }
@@ -628,7 +679,14 @@ void TeamWorkspace::setProject(const QString &project)
     if (m_project == project) { updateActions(); return; }
     m_project = project;
     m_areas->clear();
-    m_messages->clear();
+    m_messages->clearConversation();
+    m_messageRecords = {};
+    m_attachmentRecords = {};
+    m_activeCalls->clear();
+    m_callRecords = {}; m_callsLoading.clear();
+    m_pendingCallArea.clear();
+    m_pendingCallId.clear();
+    m_extrasLoading = false;
     m_attachments->clear();
     m_databaseTree->clear();
     m_rows->setRowCount(0);
@@ -661,14 +719,40 @@ void TeamWorkspace::requestMessages()
     }
 }
 
+void TeamWorkspace::refreshSpaceExtras()
+{
+    const auto area = currentAreaId();
+    if (area.isEmpty()) { return; }
+    if (!m_extrasLoading && permits(QStringLiteral("attachments.read"))) { m_extrasLoading = true; m_api->fetchAttachments(area); }
+    if (m_callsLoading != area && m_callsEnabled && m_callDiscovery && permits(QStringLiteral("calls.join"))) {
+        m_callsLoading = area; m_api->fetchCalls(area);
+    }
+}
+
 void TeamWorkspace::reset()
 {
+    if (m_callWindow) { m_callWindow->close(); }
+    m_browserCallNext = false;
     m_poll->stop();
     m_feedback->hide();
     m_project.clear();
     m_databaseEnabled = false;
     m_collaborationEnabled = false;
     m_callsEnabled = false;
+    m_callDiscovery = false;
+    m_pendingCallArea.clear();
+    m_pendingCallId.clear();
+    m_pendingUploadArea.clear();
+    m_transferBusy = false;
+    m_extrasLoading = false;
+    m_transferProgress->hide();
+    m_cancelTransfer->hide();
+    m_transferStatus->setText(QStringLiteral("Drop a file into the conversation to share it."));
+    m_activeCalls->clear();
+    m_callRecords = {}; m_callsLoading.clear();
+    m_messageRecords = {};
+    m_attachmentRecords = {};
+    m_messages->clearConversation();
     m_capabilitiesLoaded = false;
     m_collaborationAdvertised = false;
     m_availabilityError.clear();
@@ -696,7 +780,7 @@ void TeamWorkspace::reset()
     m_profile->setText(QStringLiteral("Sign in to load your server profile."));
     m_projectLabel->setText(QStringLiteral("No project"));
     m_projectLabel->hide();
-    for (auto *tree : {m_members, m_roles, m_messages, m_attachments, m_databaseTree, m_notes, m_audit}) {
+    for (auto *tree : {m_members, m_roles, m_attachments, m_databaseTree, m_notes, m_audit}) {
         tree->clear();
     }
     m_areas->clear();
@@ -715,24 +799,33 @@ void TeamWorkspace::selectArea()
 {
     const auto area = currentAreaId();
     if (area == m_selectedArea) { return; }
-    if (!m_selectedArea.isEmpty()) { m_messageDrafts.insert(m_selectedArea, m_message->text()); }
+    if (!m_selectedArea.isEmpty()) { m_messageDrafts.insert(m_selectedArea, m_message->toPlainText()); }
     m_selectedArea = area;
-    m_message->setText(m_messageDrafts.value(area));
-    m_messages->clear();
+    m_message->setPlainText(m_messageDrafts.value(area));
+    m_messageRecords = {};
+    m_attachmentRecords = {};
+    m_messages->clearConversation();
+    m_activeCalls->clear();
+    m_callRecords = {}; m_callsLoading.clear();
+    m_pendingCallArea.clear();
+    m_pendingCallId.clear();
+    m_extrasLoading = false;
+    m_spaceTitle->setText(m_areas->currentItem() != nullptr
+        ? QStringLiteral("# ") + m_areas->currentItem()->text().section(u'\n', 0, 0) : QStringLiteral("# Choose a space"));
     m_attachments->clear();
     m_messagesLoading.clear();
     m_messagesRefreshNeeded.clear();
     updateActions();
     if (!area.isEmpty()) {
         requestMessages();
-        if (permits(QStringLiteral("attachments.read"))) { m_api->fetchAttachments(area); }
+        refreshSpaceExtras();
     }
 }
 
 void TeamWorkspace::sendMessage()
 {
     const auto area = currentAreaId();
-    const auto body = m_message->text().trimmed();
+    const auto body = m_message->toPlainText().trimmed();
     if (!m_pendingMessageArea.isEmpty()) { return; }
     if (!m_collaborationEnabled || !permits(QStringLiteral("messages.write")) || area.isEmpty() || body.isEmpty()) {
         emit statusMessage(QStringLiteral("Select an accessible space and enter a message."));
@@ -1044,8 +1137,45 @@ void TeamWorkspace::uploadAttachment()
     }
     const auto filePath = QFileDialog::getOpenFileName(this, QStringLiteral("Share file with project area"));
     if (!filePath.isEmpty()) {
-        m_api->uploadAttachment(area, filePath, m_maxAttachmentBytes);
+        shareFile(filePath);
     }
+}
+
+void TeamWorkspace::shareFile(const QString &path)
+{
+    const auto area = currentAreaId();
+    if (m_transferBusy || area.isEmpty() || !m_collaborationEnabled || !permits(QStringLiteral("attachments.write"))) {
+        m_feedback->setText(QStringLiteral("Select a space with file-sharing access before uploading.")); m_feedback->show(); return;
+    }
+    m_feedback->hide();
+    m_transferBusy = true;
+    m_pendingUploadArea = area;
+    m_transferProgress->setValue(0);
+    m_transferProgress->show();
+    m_cancelTransfer->show();
+    updateActions();
+    m_api->uploadAttachment(area, path, m_maxAttachmentBytes);
+}
+
+void TeamWorkspace::downloadFile(const QString &id)
+{
+    if (m_transferBusy || !permits(QStringLiteral("attachments.read"))) { return; }
+    for (const auto &value : m_attachmentRecords) {
+        const auto file = value.toObject();
+        if (file.value(QStringLiteral("id")).toString() != id) { continue; }
+        const auto target = QFileDialog::getSaveFileName(this, QStringLiteral("Save shared file"), file.value(QStringLiteral("original_name")).toString());
+        if (target.isEmpty()) { return; }
+        m_feedback->hide();
+        m_transferBusy = true;
+        m_transferProgress->setValue(0);
+        m_transferProgress->show();
+        m_cancelTransfer->show();
+        updateActions();
+        m_api->downloadAttachment(id, target, m_maxAttachmentBytes, file.value(QStringLiteral("sha256")).toString());
+        return;
+    }
+    m_feedback->setText(QStringLiteral("This file is no longer in the current space. Refresh the files and try again."));
+    m_feedback->show();
 }
 
 void TeamWorkspace::downloadAttachment()
@@ -1055,10 +1185,7 @@ void TeamWorkspace::downloadAttachment()
         emit statusMessage(QStringLiteral("Select a shared file to download."));
         return;
     }
-    const auto target = QFileDialog::getSaveFileName(this, QStringLiteral("Save shared file"), item->text(0));
-    if (!target.isEmpty()) {
-        m_api->downloadAttachment(item->data(0, IdRole).toString(), target, m_maxAttachmentBytes);
-    }
+    downloadFile(item->data(0, IdRole).toString());
 }
 
 void TeamWorkspace::saveNote()
@@ -1092,20 +1219,36 @@ void TeamWorkspace::selectDatabaseTable()
 
 void TeamWorkspace::startAudioCall()
 {
-    if (!m_callsEnabled || currentAreaId().isEmpty()) {
-        emit statusMessage(QStringLiteral("Select an area on a server that permits calls."));
-        return;
-    }
-    m_api->startCall(currentAreaId(), QStringLiteral("audio"));
+    startCall(QStringLiteral("audio"));
 }
 
 void TeamWorkspace::startVideoCall()
 {
-    if (!m_callsEnabled || currentAreaId().isEmpty()) {
-        emit statusMessage(QStringLiteral("Select an area on a server that permits calls."));
-        return;
+    startCall(QStringLiteral("video"));
+}
+
+void TeamWorkspace::startCall(const QString &mode)
+{
+    if (!m_pendingCallArea.isEmpty()) { return; }
+    if (!m_callsEnabled || currentAreaId().isEmpty() || !permits(QStringLiteral("calls.start"))) {
+        m_feedback->setText(QStringLiteral("Select a space that permits starting calls.")); m_feedback->show(); return;
     }
-    m_api->startCall(currentAreaId(), QStringLiteral("video"));
+    m_feedback->hide();
+    m_pendingCallArea = currentAreaId();
+    m_spaceTitle->setText(QStringLiteral("Creating %1 call…").arg(mode));
+    updateActions();
+    m_api->startCall(m_pendingCallArea, mode);
+}
+
+void TeamWorkspace::joinCall()
+{
+    if (!m_pendingCallArea.isEmpty() || !m_callsEnabled || !permits(QStringLiteral("calls.join")) || m_activeCalls->currentIndex() < 0) { return; }
+    m_pendingCallArea = currentAreaId();
+    m_pendingCallId = m_activeCalls->currentData().toString();
+    m_feedback->hide();
+    m_spaceTitle->setText(QStringLiteral("Preparing your call access…"));
+    updateActions();
+    m_api->createCallTicket(m_pendingCallId);
 }
 
 void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payload)
@@ -1223,31 +1366,18 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         const auto area = operation.mid(QStringLiteral("team-messages:").size());
         if (m_messagesLoading == area) { m_messagesLoading.clear(); }
         if (area != currentAreaId()) { return; }
-        auto *scroll = m_messages->verticalScrollBar();
-        const bool atBottom = scroll->value() >= scroll->maximum() - 2;
-        const int oldPosition = scroll->value();
-        m_messages->clear();
-        for (const auto &value : payload.value(QStringLiteral("messages")).toArray()) {
-            const auto message = value.toObject();
-            auto *row = new QTreeWidgetItem(
-                m_messages,
-                {message.value(QStringLiteral("created_at")).toString(),
-                 message.value(QStringLiteral("display_name")).toString(),
-                 message.value(QStringLiteral("body")).toString()});
-            row->setToolTip(2, message.value(QStringLiteral("body")).toString());
-            if (message.value(QStringLiteral("kind")).toString() == QStringLiteral("announcement")) {
-                row->setIcon(2, QIcon(QStringLiteral(":/branding/mark.png")));
-            }
-        }
-        if (atBottom) { m_messages->scrollToBottom(); }
-        else { scroll->setValue(oldPosition); }
+        const auto records = payload.value(QStringLiteral("messages")).toArray();
+        const bool changed = records != m_messageRecords;
+        m_messageRecords = records;
+        m_messages->setConversation(m_messageRecords, m_attachmentRecords);
+        m_poll->setInterval(changed ? 5000 : qMin(20'000, m_poll->interval() + 2500));
         if (m_messagesRefreshNeeded == area) { m_messagesRefreshNeeded.clear(); requestMessages(); }
         return;
     }
     if (operation.startsWith(QStringLiteral("team-message:"))) {
         const auto area = operation.mid(QStringLiteral("team-message:").size());
         if (area == m_pendingMessageArea) {
-            if (area == currentAreaId() && m_message->text().trimmed() == m_pendingMessageBody) {
+            if (area == currentAreaId() && m_message->toPlainText().trimmed() == m_pendingMessageBody) {
                 m_message->clear();
                 m_messageDrafts.remove(area);
             } else if (m_messageDrafts.value(area).trimmed() == m_pendingMessageBody) {
@@ -1265,6 +1395,11 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
     }
     if (operation.startsWith(QStringLiteral("team-attachments:"))) {
         if (operation != QStringLiteral("team-attachments:%1").arg(currentAreaId())) { return; }
+        m_extrasLoading = false;
+        const auto records = payload.value(QStringLiteral("attachments")).toArray();
+        if (records == m_attachmentRecords) { return; }
+        m_attachmentRecords = records;
+        m_messages->setConversation(m_messageRecords, m_attachmentRecords);
         m_attachments->clear();
         for (const auto &value : payload.value(QStringLiteral("attachments")).toArray()) {
             const auto attachment = value.toObject();
@@ -1280,6 +1415,13 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         return;
     }
     if (operation.startsWith(QStringLiteral("team-attachment-upload:"))) {
+        if (operation != QStringLiteral("team-attachment-upload:%1").arg(m_pendingUploadArea)) { return; }
+        m_pendingUploadArea.clear();
+        m_transferBusy = false;
+        m_transferProgress->hide();
+        m_cancelTransfer->hide();
+        m_transferStatus->setText(QStringLiteral("File shared successfully."));
+        updateActions();
         if (operation != QStringLiteral("team-attachment-upload:%1").arg(currentAreaId())) { return; }
         m_api->fetchAttachments(currentAreaId());
         emit statusMessage(QStringLiteral("File uploaded to the selected policy-filtered project area."));
@@ -1361,15 +1503,44 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         emit statusMessage(QStringLiteral("Loaded %1 policy-filtered, read-only database rows.").arg(rows.size()));
         return;
     }
-    if (operation == QStringLiteral("team-call:%1").arg(currentAreaId())) {
-        m_api->createCallTicket(payload.value(QStringLiteral("id")).toString());
+    if (operation.startsWith(QStringLiteral("team-calls:"))) {
+        if (operation != QStringLiteral("team-calls:%1").arg(currentAreaId())) { return; }
+        m_callsLoading.clear();
+        const auto calls = payload.value(QStringLiteral("calls")).toArray();
+        if (calls == m_callRecords) { return; }
+        m_callRecords = calls;
+        const auto selected = m_activeCalls->currentData().toString();
+        m_activeCalls->clear();
+        for (const auto &value : calls) {
+            const auto call = value.toObject();
+            m_activeCalls->addItem(QStringLiteral("%1 · %2 participant(s)")
+                .arg(call.value(QStringLiteral("mode")).toString()).arg(call.value(QStringLiteral("participants")).toInt()), call.value(QStringLiteral("id")).toString());
+        }
+        const auto index = m_activeCalls->findData(selected);
+        if (index >= 0) { m_activeCalls->setCurrentIndex(index); }
+        updateActions();
+        return;
+    }
+    if (operation == QStringLiteral("team-call:%1").arg(m_pendingCallArea) && m_pendingCallArea == currentAreaId()) {
+        m_pendingCallId = payload.value(QStringLiteral("id")).toString();
+        if (m_pendingCallId.isEmpty()) { handleError(operation, 0, QStringLiteral("The server returned no call ID.")); return; }
+        m_api->createCallTicket(m_pendingCallId);
         return;
     }
     if (operation.startsWith(QStringLiteral("team-call-ticket:"))) {
+        if (m_pendingCallId.isEmpty() || operation != QStringLiteral("team-call-ticket:%1").arg(m_pendingCallId)
+            || m_pendingCallArea != currentAreaId()) { return; }
+        m_pendingCallArea.clear();
+        m_pendingCallId.clear();
+        m_spaceTitle->setText(QStringLiteral("# ") + m_areas->currentItem()->text().section(u'\n', 0, 0));
+        updateActions();
         const auto url = m_api->callClientUrl(payload.value(QStringLiteral("call_client_path")).toString(),
                                               payload.value(QStringLiteral("ticket")).toString());
         if (!url.isValid()) {
             emit statusMessage(QStringLiteral("The server returned an invalid call URL."));
+        } else if (m_browserCallNext) {
+            m_browserCallNext = false;
+            if (!QDesktopServices::openUrl(url)) { handleError(operation, 0, QStringLiteral("Could not open the call in your browser.")); }
         } else {
             openCall(url);
         }
@@ -1392,6 +1563,21 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
 
 void TeamWorkspace::handleError(const QString &operation, int statusCode, const QString &message)
 {
+    if (operation.startsWith(QStringLiteral("team-attachment-"))) {
+        m_transferBusy = false;
+        m_pendingUploadArea.clear();
+        m_transferProgress->hide();
+        m_cancelTransfer->hide();
+        m_transferStatus->setText(message);
+        updateActions();
+    }
+    if (operation == QStringLiteral("team-attachments:%1").arg(currentAreaId())) { m_extrasLoading = false; }
+    if (operation == QStringLiteral("team-calls:%1").arg(m_callsLoading)) { m_callsLoading.clear(); }
+    if (operation.startsWith(QStringLiteral("team-call:")) || operation.startsWith(QStringLiteral("team-call-ticket:"))) {
+        m_pendingCallArea.clear(); m_pendingCallId.clear(); m_browserCallNext = false; updateActions();
+        m_spaceTitle->setText(m_areas->currentItem() != nullptr
+            ? QStringLiteral("# ") + m_areas->currentItem()->text().section(u'\n', 0, 0) : QStringLiteral("# Choose a space"));
+    }
     if (operation == QStringLiteral("team-message:%1").arg(m_pendingMessageArea)) {
         m_pendingMessageArea.clear();
         m_pendingMessageBody.clear();
@@ -1413,11 +1599,30 @@ void TeamWorkspace::handleError(const QString &operation, int statusCode, const 
 void TeamWorkspace::openCall(const QUrl &url)
 {
 #ifdef FORGE_EDITOR_HAS_WEBENGINE
+    if (m_callWindow) { m_callWindow->close(); }
     auto *dialog = new QDialog(this);
+    m_callWindow = dialog;
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setWindowTitle(QStringLiteral("JSON API Forge secure call"));
     ForgeEditorUi::resizeToFit(dialog, QSize(1100, 760));
     auto *layout = new QVBoxLayout(dialog);
+    auto *header = new QHBoxLayout;
+    auto *loading = new QLabel(QStringLiteral("Loading your call…"), dialog);
+    loading->setWordWrap(true);
+    header->addWidget(loading, 1);
+    auto *browser = new QPushButton(QStringLiteral("Open in browser"), dialog);
+    browser->setToolTip(QStringLiteral("Continue in your browser if microphone or camera access fails here"));
+    header->addWidget(browser);
+    layout->addLayout(header);
+    connect(browser, &QPushButton::clicked, this, [this, dialog, url] {
+        m_pendingCallArea = currentAreaId();
+        m_pendingCallId = url.path().section(u'/', -1);
+        m_browserCallNext = true;
+        dialog->close();
+        updateActions();
+        // Tickets are single-use: the embedded page has already consumed its link.
+        m_api->createCallTicket(m_pendingCallId);
+    });
     auto *profile = new QWebEngineProfile(dialog);
     profile->setHttpCacheType(QWebEngineProfile::MemoryHttpCache);
     profile->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
@@ -1429,6 +1634,15 @@ void TeamWorkspace::openCall(const QUrl &url)
     });
     const auto trustedOrigin = url.adjusted(QUrl::RemovePath | QUrl::RemoveQuery | QUrl::RemoveFragment);
     auto *page = view->page();
+    connect(view, &QWebEngineView::loadFinished, dialog, [loading](bool ok) {
+        loading->setText(ok ? QStringLiteral("Allow microphone/camera access when you choose Join.")
+                            : QStringLiteral("The call page could not load. Check the connection or open it in your browser."));
+    });
+    QTimer::singleShot(15000, dialog, [loading] {
+        if (loading->text() == QStringLiteral("Loading your call…")) {
+            loading->setText(QStringLiteral("The call page is taking too long. Check the connection or open it in your browser."));
+        }
+    });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     connect(page, &QWebEnginePage::permissionRequested, dialog, [dialog, trustedOrigin](QWebEnginePermission permission) {
         using Type = QWebEnginePermission::PermissionType;
@@ -1458,7 +1672,7 @@ void TeamWorkspace::openCall(const QUrl &url)
     if (!QDesktopServices::openUrl(url)) {
         emit statusMessage(QStringLiteral("Could not open the one-time call client URL."));
     } else {
-        emit statusMessage(QStringLiteral("Opened the secure call client. Install Qt WebEngine to embed calls in the Editor."));
+        emit statusMessage(QStringLiteral("Call opened in your browser. Choose Join to enable your microphone/camera."));
     }
 #endif
 }

@@ -122,7 +122,14 @@ MainWindow::MainWindow(QWidget *parent, bool restoreLayout)
 
     connect(m_api, &ApiClient::jsonReceived, this, &MainWindow::handleApiJson);
     connect(m_api, &ApiClient::requestFailedDetailed, this, &MainWindow::handleApiError);
-    connect(m_api, &ApiClient::connectionActivityChanged, this, [this](bool active) { m_activity->setVisible(active); });
+    auto *activityDelay = new QTimer(this);
+    activityDelay->setSingleShot(true);
+    activityDelay->setInterval(300);
+    connect(activityDelay, &QTimer::timeout, m_activity, &QWidget::show);
+    connect(m_api, &ApiClient::connectionActivityChanged, this, [this, activityDelay](bool active) {
+        if (active) { if (!activityDelay->isActive() && !m_activity->isVisible()) { activityDelay->start(); } }
+        else { activityDelay->stop(); m_activity->hide(); }
+    });
     connect(m_codeEditor, &QPlainTextEdit::textChanged, this, [this] {
         if (!m_updatingEditor && !m_currentDocument.isEmpty()) {
             setDirty(true);

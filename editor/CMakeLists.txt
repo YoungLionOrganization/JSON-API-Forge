@@ -77,6 +77,8 @@ add_library(forge_editor_core STATIC
   src/TemplateManager.hpp
   src/TeamWorkspace.cpp
   src/TeamWorkspace.hpp
+  src/ChatView.cpp
+  src/ChatView.hpp
   src/UiSizing.hpp
   src/VisualDesigner.cpp
   src/VisualDesigner.hpp

@@ -325,3 +325,8 @@ QListWidget#componentPalette::item { padding: 7px; border: 1px solid #41444a; bo
 QListWidget#componentPalette::item:selected { background: #3e3524; color: #ffd071; border-color: #b78a3b; }
 QTableWidget#propertyTable::item { padding: 5px; }
 QSpinBox { background: #1d1f23; color: #eeeae2; border: 1px solid #4c5058; padding: 5px; border-radius: 4px; }
+QTextBrowser#messageList { background: #25272c; border: none; border-radius: 8px; color: #e4e5e8; }
+QPlainTextEdit#messageComposer { background: #35383f; border: 1px solid #515660; border-radius: 8px; padding: 7px; font-family: "Segoe UI", sans-serif; font-size: 13px; color: #eceef2; }
+QPlainTextEdit#messageComposer:focus { border-color: #f2b84b; }
+QLabel#conversationTitle { color: #eceef2; font-size: 15px; font-weight: 700; padding: 4px; }
+QLabel#transferStatus { color: #a6a9b2; font-size: 11px; }
