@@ -235,7 +235,7 @@ jobs:
           aqtversion: "==3.3.0"
           host: windows
           arch: ${{ matrix.qt_arch }}
-          modules: qtwebengine
+          modules: qtwebengine qtwebchannel qtpositioning
           cache: true
       - name: Install native Qt on Windows ARM64
         if: matrix.artifact == 'windows-arm64'
@@ -316,7 +316,7 @@ jobs:
         with:
           version: "6.8.3"
           aqtversion: "==3.3.0"
-          modules: qtwebengine
+          modules: qtwebengine qtwebchannel qtpositioning
           cache: true
       - name: Configure Linux or macOS
         if: runner.os != 'Windows'
@@ -325,6 +325,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DBUILD_TESTING=ON
           -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
+          -DFORGE_EDITOR_REQUIRE_WEBENGINE=${{ runner.os == 'macOS' && 'ON' || 'OFF' }}
       - name: Configure matching MSVC architecture
         if: runner.os == 'Windows'
         shell: pwsh
@@ -333,13 +334,14 @@ jobs:
           -A "${{ matrix.cmake_arch }}"
           -DBUILD_TESTING=ON
           -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
+          -DFORGE_EDITOR_REQUIRE_WEBENGINE=${{ matrix.artifact == 'windows-x64' && 'ON' || 'OFF' }}
       - name: Compile
         run: cmake --build build --config Release --parallel 2
       - name: Check out the verified server contract
         if: matrix.artifact == 'linux-x64'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: f1e80e0ddc85c0af090b18880b2d56c8e247d6c4
+          ref: 8e7d595ea06c2e201f37b0eb8bc2d3172013cdbd
           path: build/server-contract
           persist-credentials: false
       - name: Install canonical server contract dependencies
@@ -418,6 +420,13 @@ jobs:
           foreach ($relative in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "platforms/qwindows.dll")) {
             if (-not (Test-Path (Join-Path $runtimeRoot $relative) -PathType Leaf)) {
               throw "windeployqt did not stage required runtime file: $relative"
+            }
+          }
+          if ("${{ matrix.artifact }}" -eq "windows-x64") {
+            foreach ($relative in @("Qt6WebEngineCore.dll", "Qt6WebEngineWidgets.dll", "QtWebEngineProcess.exe", "resources/qtwebengine_resources.pak")) {
+              if (-not (Test-Path (Join-Path $runtimeRoot $relative) -PathType Leaf)) {
+                throw "Embedded calls runtime is incomplete: $relative"
+              }
             }
           }
           $count = (Get-ChildItem stage -Recurse -File).Count

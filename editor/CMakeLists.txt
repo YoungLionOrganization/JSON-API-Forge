@@ -10,7 +10,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(FORGE_EDITOR_QT_MIN_VERSION "6.4" CACHE STRING "Minimum supported Qt version")
 find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Widgets Network)
-find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} QUIET COMPONENTS WebEngineWidgets)
+option(FORGE_EDITOR_REQUIRE_WEBENGINE "Require embedded calling support in this release kit" OFF)
+if(FORGE_EDITOR_REQUIRE_WEBENGINE)
+  find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} REQUIRED COMPONENTS WebEngineWidgets)
+else()
+  find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} QUIET COMPONENTS WebEngineWidgets)
+endif()
 option(FORGE_EDITOR_WARNINGS_AS_ERRORS "Treat editor compiler warnings as errors" OFF)
 option(FORGE_EDITOR_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
@@ -90,8 +95,11 @@ target_link_libraries(forge_editor_core
   PRIVATE forge_zip_inflate
 )
 if(TARGET Qt6::WebEngineWidgets)
+  message(STATUS "Forge calls: embedded Qt WebEngine client")
   target_link_libraries(forge_editor_core PUBLIC Qt6::WebEngineWidgets)
   target_compile_definitions(forge_editor_core PUBLIC FORGE_EDITOR_HAS_WEBENGINE=1)
+else()
+  message(STATUS "Forge calls: secure external-browser client (Qt WebEngine unavailable)")
 endif()
 target_compile_definitions(forge_editor_core PUBLIC QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 

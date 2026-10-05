@@ -39,6 +39,7 @@
 #include <QTest>
 #include <QTextEdit>
 #include <QTimer>
+#include <QVariantAnimation>
 #include <QToolButton>
 #include <QTreeWidget>
 
@@ -196,10 +197,14 @@ void EditorUiTests::sidebarReclaimsSpace()
     const int original = sidebar->width();
     QVERIFY(original >= 220);
     window.toggleSidebar();
-    QTest::qWait(65);
+    QVERIFY(window.m_sidebarAnimation != nullptr);
+    // Verify the intermediate layout without depending on a busy runner's frame timing.
+    window.m_sidebarAnimation->pause();
+    window.m_sidebarAnimation->setCurrentTime(window.m_sidebarAnimation->duration() / 2);
     QVERIFY(sidebar->isVisible());
     QVERIFY(sidebar->width() > 0 && sidebar->width() < original);
     QVERIFY(splitter->widget(1)->width() > splitter->width() - original);
+    window.m_sidebarAnimation->resume();
     QVERIFY(waitUntil([&] { return sidebar->isHidden(); }));
     QVERIFY(waitUntil([&] { return (splitter->widget(1)->geometry()) == (splitter->contentsRect()); }));
     QCOMPARE(splitter->widget(1)->geometry(), splitter->contentsRect());
