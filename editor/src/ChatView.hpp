@@ -35,4 +35,7 @@ signals:
 protected:
     void keyPressEvent(QKeyEvent *event) override;
     void insertFromMimeData(const QMimeData *source) override;
+    void resizeEvent(QResizeEvent *event) override;
+private:
+    void fitContent();
 };

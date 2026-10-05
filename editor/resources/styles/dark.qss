@@ -330,3 +330,6 @@ QPlainTextEdit#messageComposer { background: #35383f; border: 1px solid #515660;
 QPlainTextEdit#messageComposer:focus { border-color: #f2b84b; }
 QLabel#conversationTitle { color: #eceef2; font-size: 15px; font-weight: 700; padding: 4px; }
 QLabel#transferStatus { color: #a6a9b2; font-size: 11px; }
+
+QLabel#composerHint { color: #a6adbb; font-size: 11px; padding: 0 3px; }
+QPushButton#primaryButton:disabled { background: #3d4046; color: #9096a2; border-color: #4b505a; }

@@ -386,6 +386,11 @@ void TeamWorkspace::buildSpacesTab(QWidget *tab)
     composer->addWidget(upload);
     composer->addWidget(send);
     rightLayout->addLayout(composer);
+    m_composerHint = new QLabel(QStringLiteral("Enter to send · Shift+Enter for a new line"), right);
+    m_composerHint->setObjectName(QStringLiteral("composerHint"));
+    m_composerHint->setTextFormat(Qt::PlainText);
+    rightLayout->addWidget(m_composerHint);
+    connect(m_message, &QPlainTextEdit::textChanged, this, &TeamWorkspace::updateActions);
     auto *transfer = new QHBoxLayout;
     m_transferStatus = new QLabel(QStringLiteral("Drop a file into the conversation to share it."), right);
     m_transferStatus->setObjectName(QStringLiteral("transferStatus"));
@@ -555,6 +560,7 @@ void TeamWorkspace::setCapabilities(const QJsonObject &capabilities)
     m_collaborationEnabled = capabilities.value(QStringLiteral("collaboration")).toBool(false);
     m_callsEnabled = capabilities.value(QStringLiteral("calls")).toBool(false);
     m_callDiscovery = capabilities.value(QStringLiteral("call_discovery")).toBool(false);
+    m_callClientReady = capabilities.value(QStringLiteral("call_client_revision")).toInt() >= 2;
     m_rank = qBound(0, capabilities.value(QStringLiteral("rank")).toInt(), 1000);
     m_noteMinimumRank->setRange(0, m_rank);
     m_noteMinimumRank->setValue(m_rank);
@@ -598,7 +604,7 @@ void TeamWorkspace::updateActions()
                 enabled = enabled && collaboration;
             }
             if (button->property("forgeNeedsArea").toBool()) { enabled = enabled && areaSelected; }
-            if (permission.startsWith(QStringLiteral("calls."))) { enabled = enabled && m_callsEnabled; }
+            if (permission.startsWith(QStringLiteral("calls."))) { enabled = enabled && m_callsEnabled && m_callClientReady; }
             if (permission.startsWith(QStringLiteral("calls."))) { enabled = enabled && m_pendingCallArea.isEmpty(); }
             if (permission == QStringLiteral("attachments.write")) { enabled = enabled && !m_transferBusy; }
             if (permission == QStringLiteral("attachments.read")) { enabled = enabled && !m_transferBusy; }
@@ -608,14 +614,25 @@ void TeamWorkspace::updateActions()
                     : !m_capabilitiesLoaded ? QStringLiteral("Server features are still unavailable. Use Retry.")
                     : !permits(permission) ? QStringLiteral("Your server role does not grant %1 in this project").arg(permission)
                     : permission.startsWith(QStringLiteral("calls.")) && !m_callsEnabled ? QStringLiteral("Calls are disabled by the server")
+                    : permission.startsWith(QStringLiteral("calls.")) && !m_callClientReady ? QStringLiteral("Update the main server and restart it to use secure calls")
                     : button->property("forgeNeedsArea").toBool() && !areaSelected ? QStringLiteral("Select a space first")
                     : QStringLiteral("Collaboration is disabled by the server"));
             } else { button->setToolTip(QString()); }
         }
     }
-    m_sendButton->setEnabled(areaSelected && permits(QStringLiteral("messages.write")) && m_pendingMessageArea.isEmpty());
+    m_sendButton->setEnabled(areaSelected && permits(QStringLiteral("messages.write")) && m_pendingMessageArea.isEmpty()
+        && !m_message->toPlainText().trimmed().isEmpty());
+    m_sendButton->setText(m_pendingMessageArea.isEmpty() ? QStringLiteral("Send") : QStringLiteral("Sending…"));
     m_message->setEnabled(areaSelected && permits(QStringLiteral("messages.write")));
-    m_joinCall->setEnabled(areaSelected && m_callsEnabled && m_callDiscovery && m_pendingCallArea.isEmpty()
+    const auto spaceName = m_areas->currentItem() ? m_areas->currentItem()->text().section(u'\n', 0, 0).left(24) : QString();
+    m_message->setPlaceholderText(!areaSelected ? QStringLiteral("Choose a space first…")
+        : !permits(QStringLiteral("messages.write")) ? QStringLiteral("You can read this conversation")
+        : QStringLiteral("Message #%1…").arg(spaceName));
+    const auto count = m_message->toPlainText().size();
+    m_composerHint->setText(!m_pendingMessageArea.isEmpty() ? QStringLiteral("Sending your message… You can keep writing.")
+        : count >= 7200 ? QStringLiteral("%1 / 8000 · Enter to send · Shift+Enter for a new line").arg(count)
+        : QStringLiteral("Enter to send · Shift+Enter for a new line"));
+    m_joinCall->setEnabled(areaSelected && m_callsEnabled && m_callClientReady && m_callDiscovery && m_pendingCallArea.isEmpty()
         && permits(QStringLiteral("calls.join")) && m_activeCalls->count() > 0);
     m_activeCalls->setVisible(m_callDiscovery && m_activeCalls->count() > 0);
     m_joinCall->setVisible(m_callDiscovery && m_activeCalls->count() > 0);
@@ -643,6 +660,8 @@ void TeamWorkspace::updateActions()
             : QStringLiteral("Choose an accessible project. Your role does not grant areas.read in the current scope.");
     } else if (!m_callsEnabled && permits(QStringLiteral("calls.join"))) {
         availability = QStringLiteral("Spaces are ready. Calls are disabled on the server (EDITOR_CALLS_ENABLED).");
+    } else if (m_callsEnabled && !m_callClientReady) {
+        availability = QStringLiteral("Your server uses an older call page that can remain on ‘Waiting for secure authorization’. Update the main server and restart it before joining calls.");
     }
     m_spaceAvailability->setText(availability);
     m_spaceAvailability->setVisible(!availability.isEmpty());
@@ -740,6 +759,7 @@ void TeamWorkspace::reset()
     m_collaborationEnabled = false;
     m_callsEnabled = false;
     m_callDiscovery = false;
+    m_callClientReady = false;
     m_pendingCallArea.clear();
     m_pendingCallId.clear();
     m_pendingUploadArea.clear();
@@ -1230,7 +1250,7 @@ void TeamWorkspace::startVideoCall()
 void TeamWorkspace::startCall(const QString &mode)
 {
     if (!m_pendingCallArea.isEmpty()) { return; }
-    if (!m_callsEnabled || currentAreaId().isEmpty() || !permits(QStringLiteral("calls.start"))) {
+    if (!m_callsEnabled || !m_callClientReady || currentAreaId().isEmpty() || !permits(QStringLiteral("calls.start"))) {
         m_feedback->setText(QStringLiteral("Select a space that permits starting calls.")); m_feedback->show(); return;
     }
     m_feedback->hide();
@@ -1242,7 +1262,7 @@ void TeamWorkspace::startCall(const QString &mode)
 
 void TeamWorkspace::joinCall()
 {
-    if (!m_pendingCallArea.isEmpty() || !m_callsEnabled || !permits(QStringLiteral("calls.join")) || m_activeCalls->currentIndex() < 0) { return; }
+    if (!m_pendingCallArea.isEmpty() || !m_callsEnabled || !m_callClientReady || !permits(QStringLiteral("calls.join")) || m_activeCalls->currentIndex() < 0) { return; }
     m_pendingCallArea = currentAreaId();
     m_pendingCallId = m_activeCalls->currentData().toString();
     m_feedback->hide();
@@ -1634,9 +1654,17 @@ void TeamWorkspace::openCall(const QUrl &url)
     });
     const auto trustedOrigin = url.adjusted(QUrl::RemovePath | QUrl::RemoveQuery | QUrl::RemoveFragment);
     auto *page = view->page();
-    connect(view, &QWebEngineView::loadFinished, dialog, [loading](bool ok) {
+    connect(view, &QWebEngineView::loadFinished, dialog, [loading, view](bool ok) {
         loading->setText(ok ? QStringLiteral("Allow microphone/camera access when you choose Join.")
                             : QStringLiteral("The call page could not load. Check the connection or open it in your browser."));
+        if (!ok) { return; }
+        const QPointer<QLabel> status(loading);
+        view->page()->runJavaScript(QStringLiteral("document.documentElement.getAttribute('data-forge-call-client')"),
+            [status](const QVariant &revision) {
+                if (status && revision.toString() != QStringLiteral("2")) {
+                    status->setText(QStringLiteral("This server returned an older or unavailable call page. Update main, restart the server and reopen the call. You can also try Open in browser."));
+                }
+            });
     });
     QTimer::singleShot(15000, dialog, [loading] {
         if (loading->text() == QStringLiteral("Loading your call…")) {

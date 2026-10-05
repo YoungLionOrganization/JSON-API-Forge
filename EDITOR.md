@@ -125,3 +125,16 @@ The `Editor build` workflow builds and tests six native targets with warnings-as
 - macOS x64 and ARM64 (`macos-15-intel`, `macos-15`)
 
 Every job stages a multi-file application and renders a packaged-app screenshot. Linux bundles the Qt runtime and produces ZIP + Qt Installer Framework setup RUN, Windows runs `windeployqt` and produces ZIP + Qt IFW setup EXE, and macOS runs `macdeployqt` and produces ZIP + Qt IFW setup DMG. The workflow downloads official IFW 4.8.1 tools for the matching platform, verifies their pinned SHA-256 values before execution, and makes every installer present/install the project `LICENSE`. Every archive/installer receives a SHA-256 sidecar. A final job verifies all twelve deliverables and publishes one all-platform bundle. Workflows never create a release or push generated binaries.
+
+## Sending messages and joining calls
+
+The placeholder names the selected space. Enter sends a nonempty message;
+Shift+Enter adds a line. The input grows for wrapped text and preserves the
+next draft while a previous send is pending. Failed sends keep the draft.
+The separate hint shows send state and the character count near the limit.
+
+Calls require the current main server advertising `call_client_revision: 2`.
+An older page showing “Waiting for secure authorization…” comes from the
+server, so updating just the desktop application is insufficient. Update main,
+restart its running process/container/service and request a new call ticket.
+A current page reports WebSocket, expired-ticket and script startup problems.

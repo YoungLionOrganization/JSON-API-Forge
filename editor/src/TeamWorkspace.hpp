@@ -92,6 +92,7 @@ private:
     bool m_browserCallNext = false;
     QLabel *m_spaceTitle = nullptr;
     QLabel *m_transferStatus = nullptr;
+    QLabel *m_composerHint = nullptr;
     QProgressBar *m_transferProgress = nullptr;
     QPushButton *m_cancelTransfer = nullptr;
     QComboBox *m_activeCalls = nullptr;
@@ -101,6 +102,7 @@ private:
     QString m_pendingUploadArea;
     bool m_transferBusy = false;
     bool m_callDiscovery = false;
+    bool m_callClientReady = false;
     bool m_extrasLoading = false;
     QTreeWidget *m_attachments = nullptr;
     QTreeWidget *m_databaseTree = nullptr;

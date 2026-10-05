@@ -98,6 +98,10 @@ jobs:
               "editor/packaging/qtifw/config/config-macos.xml",
               "editor/packaging/qtifw/config/installer.qss",
               "editor/packaging/qtifw/build-installer.ps1",
+              "editor/packaging/windows/editor.iss",
+              "editor/packaging/windows/build-installer.ps1",
+              "editor/packaging/windows/prepare-tools.ps1",
+              "editor/tests/test_windows_installer.py",
               "editor/packaging/qtifw/build-installer.sh",
               "editor/packaging/qtifw/create-dmg.sh",
               "editor/packaging/qtifw/packages/dev.jsonapiforge.editor/meta/package.xml",
@@ -158,7 +162,7 @@ jobs:
               raise SystemExit(f"symlinks are not allowed in Editor source: {links}")
           PY
           for helper in editor/packaging/qtifw/*.sh; do bash -n "$helper"; done
-          python -m unittest discover -s editor/tests -p "test_packaging.py" -v
+          python -m unittest discover -s editor/tests -p "test_*.py" -v
           python scripts/check_manifest.py
           git diff --check
 
@@ -182,7 +186,7 @@ jobs:
             ifw_package: QtInstallerFramework-linux-arm64-4.8.1.run
             ifw_sha256: 2f1da1df46ac7f42b137d931e7c6d6ce35fc921016cf583cbede682777265426
           - os: windows-2022
-            label: Windows x64 portable ZIP + Qt IFW installer
+            label: Windows x64 portable ZIP + Upgrade/Repair installer
             artifact: windows-x64
             qt_arch: win64_msvc2022_64
             cmake_arch: x64
@@ -190,7 +194,7 @@ jobs:
             ifw_package: QtInstallerFramework-windows-x64-4.8.1.exe
             ifw_sha256: b0a7c6816dfaff7d571c9e5350fc08952f12022be87a28f6d8d36a78428c6210
           - os: windows-11-arm
-            label: Windows ARM64 portable ZIP + native Qt IFW installer
+            label: Windows ARM64 portable ZIP + Upgrade/Repair installer
             artifact: windows-arm64
             qt_arch: win64_msvc2022_arm64
             cmake_arch: ARM64
@@ -264,22 +268,12 @@ jobs:
           binary_creator=$(find "$ifw_root" -type f -name binarycreator -perm -111 -print -quit)
           test -n "$binary_creator"
           bash editor/packaging/qtifw/prepare-linux-tools.sh "$binary_creator" >> "$GITHUB_PATH"
-      - name: Install verified official Qt IFW on Windows
+      - name: Install checksum-verified Windows installer compiler
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $package = "${{ matrix.ifw_package }}"
-          $uri = "https://download.qt.io/official_releases/qt-installer-framework/4.8.1/$package"
-          $installer = Join-Path $env:RUNNER_TEMP $package
-          Invoke-WebRequest -Uri $uri -OutFile $installer
-          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne "${{ matrix.ifw_sha256 }}") { throw "Qt IFW download checksum mismatch" }
-          $ifwRoot = Join-Path $env:RUNNER_TEMP "qt-ifw"
-          $installProcess = Start-Process -FilePath $installer -WindowStyle Hidden -Wait -PassThru -ArgumentList @('--root', ('"' + $ifwRoot + '"'), '--accept-licenses', '--default-answer', '--confirm-command', 'install')
-          if ($installProcess.ExitCode -ne 0) { throw "Qt IFW tool installation failed with code $($installProcess.ExitCode)" }
-          $binaryCreator = Get-ChildItem -Path $ifwRoot -Filter binarycreator.exe -File -Recurse | Select-Object -First 1
-          if (-not $binaryCreator) { throw "Qt IFW binarycreator.exe was not installed" }
-          $binaryCreator.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $compiler = ./editor/packaging/windows/prepare-tools.ps1 -ToolDirectory (Join-Path $env:RUNNER_TEMP 'forge-inno-tools')
+          Split-Path -Parent $compiler | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Install verified official Qt IFW on macOS
         if: runner.os == 'macOS'
         shell: bash
@@ -341,7 +335,7 @@ jobs:
         if: matrix.artifact == 'linux-x64'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: 8e7d595ea06c2e201f37b0eb8bc2d3172013cdbd
+          ref: 31b5eafe5f4a8450da2c85965795d939fdc4a97b
           path: build/server-contract
           persist-credentials: false
       - name: Install canonical server contract dependencies
@@ -359,6 +353,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          overwrite: true
           name: editor-test-diagnostics-${{ matrix.artifact }}
           path: |
             build/Testing/Temporary/LastTest.log
@@ -444,11 +439,15 @@ jobs:
           $archive = "JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}.zip"
           Compress-Archive -Path stage/* -DestinationPath "artifacts/$archive"
           $outPath = Join-Path (Resolve-Path artifacts) "JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}-setup.exe"
-          ./editor/packaging/qtifw/build-installer.ps1 -StageDir stage -OutputFile $outPath
+          ./editor/packaging/windows/build-installer.ps1 -StageDir stage -OutputFile $outPath
           $installer = Split-Path -Leaf $outPath
-          if ((Get-Item "artifacts/$installer").Length -lt 1000000) { throw "Qt IFW installer appears truncated" }
+          if ((Get-Item "artifacts/$installer").Length -lt 1000000) { throw "Windows installer appears truncated" }
+          $env:FORGE_WINDOWS_INSTALLER = $outPath
+          $env:FORGE_INSTALLER_PAYLOAD = (Resolve-Path stage).Path
+          python editor/tests/test_windows_installer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows install/repair/upgrade contract failed' }
           $installed = Join-Path $env:RUNNER_TEMP "editor-installed-${{ matrix.artifact }}"
-          $installProcess = Start-Process -FilePath $outPath -Wait -PassThru -ArgumentList @('--root', ('"' + $installed + '"'), '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          $installProcess = Start-Process -FilePath $outPath -WindowStyle Hidden -Wait -PassThru -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/NOICONS', ('/DIR="' + $installed + '"'))
           if ($installProcess.ExitCode -ne 0) { throw "Generated installer failed: $($installProcess.ExitCode)" }
           $installedExe = Join-Path $installed "bin/JSON-API-Forge-Editor.exe"
           if (-not (Test-Path $installedExe -PathType Leaf)) { throw "Installer did not install the Editor" }
@@ -508,6 +507,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          overwrite: true
           name: editor-packaging-diagnostics-${{ matrix.artifact }}
           path: |
             artifacts/*.log
@@ -516,6 +516,7 @@ jobs:
           retention-days: 14
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          overwrite: true
           name: JSON-API-Forge-Editor-v0.5.2-${{ matrix.artifact }}
           path: artifacts/*
           if-no-files-found: error
@@ -564,7 +565,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: JSON-API-Forge-Editor-v0.5.2-*
+          pattern: JSON-API-Forge-Editor-v0.5.2-*64
           path: downloads
       - name: Verify installers and portable archives
         run: |
@@ -587,15 +588,35 @@ jobs:
           test "$(find release-assets -maxdepth 1 -type f -name '*.sha256' | wc -l)" -eq 12
           cp EDITOR.md RELEASE_ASSETS.md LICENSE LICENSE-FAQ.md NOTICE.md THIRD_PARTY_NOTICES.md TRADEMARK_POLICY.md AI_USAGE_POLICY.md LICENSE-HISTORY.md LICENSE-METADATA.json release-assets/
           (cd release-assets && find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*-setup.run' -o -name '*-setup.exe' -o -name '*-setup.dmg' \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          folder = Path('release-assets')
+          assets = {path.name: hashlib.file_digest(path.open('rb'), 'sha256').hexdigest()
+                    for path in folder.iterdir() if path.suffix in ('.zip', '.exe', '.run', '.dmg')}
+          proof = {'sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'],
+                   'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'branch': 'Editor',
+                   'version': '0.5.2', 'call_client_revision': 2, 'assets': assets}
+          (folder / 'release-build.json').write_text(json.dumps(proof, indent=2) + '\n')
+          PY
+          python editor/packaging/validate-release.py release-assets --sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
           (cd release-assets && zip -9 -r ../JSON-API-Forge-Editor-v0.5.2-all-platforms.zip .)
           sha256sum JSON-API-Forge-Editor-v0.5.2-all-platforms.zip \
             > JSON-API-Forge-Editor-v0.5.2-all-platforms.zip.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          overwrite: true
           name: JSON-API-Forge-Editor-v0.5.2-release-assets
           path: |
             release-assets/*
             JSON-API-Forge-Editor-v0.5.2-all-platforms.zip
             JSON-API-Forge-Editor-v0.5.2-all-platforms.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          overwrite: true
+          name: Editor-v0.5.2-release-proof
+          path: release-assets/release-build.json
           if-no-files-found: error
           retention-days: 30

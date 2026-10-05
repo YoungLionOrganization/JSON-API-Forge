@@ -1,6 +1,6 @@
 # JSON API Forge Editor v0.5.2
 
-**Release date:** 4 October 2026
+**Prepared for publication:** 6 October 2026
 
 **Status:** Alpha desktop workspace
 
@@ -34,7 +34,7 @@ installers:
 | Target | Portable package | Installer |
 |---|---|---|
 | Linux x64 / ARM64 | ZIP | Qt IFW RUN |
-| Windows x64 / ARM64 | ZIP | Qt IFW EXE |
+| Windows x64 / ARM64 | ZIP | Upgrade/Repair EXE |
 | macOS Intel / ARM64 | ZIP | Qt IFW DMG |
 
 Every deliverable has a SHA-256 sidecar, and the combined job verifies all
@@ -45,3 +45,10 @@ The server-side v0.5.2 control plane from `main` is required for remote team,
 database and collaboration features. Keep that endpoint private, HTTPS-only
 outside loopback, and configured with least-privilege project/document/
 database policies.
+
+Publication preparation adds a short, space-specific message placeholder,
+auto-growing multiline input, separate keyboard hints and visible send state.
+Call-client revision 2 reports authorization timeouts and script startup
+failures instead of waiting indefinitely. The Editor explains when the
+running main server is outdated; update and restart that server as well.
+Windows setup now supports detected Upgrade/Repair and prevents downgrades.

@@ -5,9 +5,13 @@
 #include <QKeyEvent>
 #include <QLocale>
 #include <QMimeData>
+#include <QResizeEvent>
 #include <QScrollBar>
+#include <QTextBlock>
+#include <QTextLayout>
 #include <QTimer>
 #include <QUrl>
+#include <QtMath>
 
 namespace {
 QString escaped(const QString &value) { return value.toHtmlEscaped().replace(u'\n', QStringLiteral("<br>")); }
@@ -121,22 +125,45 @@ ChatComposer::ChatComposer(QWidget *parent) : QPlainTextEdit(parent)
 {
     setObjectName(QStringLiteral("messageComposer"));
     setMinimumHeight(46);
-    setMaximumHeight(80);
+    setMaximumHeight(132);
     setFixedHeight(46);
-    setPlaceholderText(QStringLiteral("Message your space…  Enter to send · Shift+Enter for a new line"));
+    setPlaceholderText(QStringLiteral("Write a message…"));
+    setAccessibleName(QStringLiteral("Message"));
+    setToolTip(QStringLiteral("Enter to send · Shift+Enter for a new line"));
+    auto colors = palette();
+    colors.setColor(QPalette::PlaceholderText, QColor(QStringLiteral("#a6adbb")));
+    setPalette(colors);
     connect(this, &QPlainTextEdit::textChanged, this, [this] {
-        setFixedHeight(qBound(46, qMin(4, document()->blockCount()) * fontMetrics().lineSpacing() + 18, 80));
+        fitContent();
         if (toPlainText().size() <= 8000) { return; }
+        const auto text = toPlainText();
         auto cursor = textCursor();
-        cursor.setPosition(8000);
+        // Do not split a pasted emoji's UTF-16 surrogate pair at the limit.
+        cursor.setPosition(text.at(7999).isHighSurrogate() ? 7999 : 8000);
         cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
         cursor.removeSelectedText();
     });
 }
+void ChatComposer::fitContent()
+{
+    qreal height = 22;
+    for (auto block = document()->begin(); block.isValid() && height < 132; block = block.next()) {
+        height += blockBoundingRect(block).height();
+    }
+    setFixedHeight(qBound(46, qCeil(height), 132));
+}
+void ChatComposer::resizeEvent(QResizeEvent *event)
+{
+    QPlainTextEdit::resizeEvent(event);
+    if (event->size().width() != event->oldSize().width()) {
+        QTimer::singleShot(0, this, &ChatComposer::fitContent);
+    }
+}
 void ChatComposer::keyPressEvent(QKeyEvent *event)
 {
     if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !(event->modifiers() & Qt::ShiftModifier)) {
-        emit sendRequested(); event->accept(); return;
+        if (!toPlainText().trimmed().isEmpty()) { emit sendRequested(); }
+        event->accept(); return;
     }
     QPlainTextEdit::keyPressEvent(event);
 }

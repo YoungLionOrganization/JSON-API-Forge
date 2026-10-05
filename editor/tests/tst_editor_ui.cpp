@@ -106,7 +106,7 @@ QJsonObject capabilities(const QStringList &permissions)
     QJsonArray values;
     for (const auto &permission : permissions) { values.append(permission); }
     return {{QStringLiteral("collaboration"), true}, {QStringLiteral("database_browser"), true},
-            {QStringLiteral("calls"), true}, {QStringLiteral("rank"), 100},
+            {QStringLiteral("calls"), true}, {QStringLiteral("call_client_revision"), 2}, {QStringLiteral("rank"), 100},
             {QStringLiteral("permissions"), values}};
 }
 
@@ -165,6 +165,8 @@ private slots:
     void restrictedNotesCarryReaderRank();
     void conversationKeepsSelectionAndEscapesContent();
     void composerSupportsMultilineAndFilePaste();
+    void composerWrapsAndRejectsEmptySend();
+    void oldCallClientExplainsRequiredUpdate();
     void backgroundRefreshAndDownloadIntegrity();
     void liveServerContract();
 
@@ -779,6 +781,60 @@ void EditorUiTests::composerSupportsMultilineAndFilePaste()
     composer.setPlainText(QString(8100, u'a'));
     QCOMPARE(composer.toPlainText().size(), 8000);
     QVERIFY(files.isEmpty());
+}
+
+void EditorUiTests::composerWrapsAndRejectsEmptySend()
+{
+    ChatComposer composer;
+    composer.resize(230, 46);
+    composer.show();
+    QVERIFY(composer.placeholderText().size() < 40);
+    QSignalSpy sent(&composer, &ChatComposer::sendRequested);
+    composer.setPlainText(QStringLiteral("  "));
+    QTest::keyClick(&composer, Qt::Key_Return);
+    QVERIFY(sent.isEmpty());
+    composer.setPlainText(QString(160, u'W'));
+    QVERIFY(waitUntil([&] { return composer.height() > 46; }));
+    QVERIFY(composer.height() <= 132);
+    composer.clear();
+    QVERIFY(waitUntil([&] { return composer.height() <= 50; }));
+    composer.setPlainText(QString(7999, u'a') + QString::fromUtf8("😀") + QStringLiteral("tail"));
+    QCOMPARE(composer.toPlainText().size(), 7999);
+    QVERIFY(!composer.toPlainText().back().isHighSurrogate());
+}
+
+void EditorUiTests::oldCallClientExplainsRequiredUpdate()
+{
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    TeamWorkspace team(&api);
+    auto old = capabilities({QStringLiteral("*")});
+    old.remove(QStringLiteral("call_client_revision"));
+    team.setCapabilities(old);
+    deliver(api, QStringLiteral("team-areas:*"), spaces());
+    auto *availability = team.findChild<QLabel *>(QStringLiteral("spaceAvailability"));
+    QVERIFY(availability->text().contains(QStringLiteral("Update the main server")));
+    auto *composer = team.findChild<ChatComposer *>(QStringLiteral("messageComposer"));
+    QVERIFY(composer->isEnabled());
+    QVERIFY(composer->placeholderText().size() < 40);
+    for (auto *button : team.findChildren<QPushButton *>()) {
+        if (button->property("forgePermission") == QStringLiteral("messages.write")) {
+            QVERIFY(!button->isEnabled());
+            composer->setPlainText(QStringLiteral("Ready to send"));
+            QVERIFY(button->isEnabled());
+            composer->clear();
+            QVERIFY(!button->isEnabled());
+        }
+        if (button->property("forgePermission") == QStringLiteral("calls.start")) {
+            QVERIFY(!button->isEnabled());
+            QVERIFY(button->toolTip().contains(QStringLiteral("Update")));
+        }
+    }
+    team.setCapabilities(capabilities({QStringLiteral("*")}));
+    QVERIFY(availability->text().isEmpty());
 }
 
 void EditorUiTests::backgroundRefreshAndDownloadIntegrity()
