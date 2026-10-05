@@ -335,7 +335,7 @@ jobs:
         if: matrix.artifact == 'linux-x64'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: 31b5eafe5f4a8450da2c85965795d939fdc4a97b
+          ref: 4f820e2ff7209904d20e40470db4e204432f4bfc
           path: build/server-contract
           persist-credentials: false
       - name: Install canonical server contract dependencies

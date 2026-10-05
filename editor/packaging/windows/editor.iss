@@ -132,7 +132,7 @@ end;
 procedure InitializeWizard();
 var Candidate, Version: String;
 begin
-  MaintenancePage := CreateInputOptionPage(wpSelectDir, 'Upgrade or Repair',
+  MaintenancePage := CreateInputOptionPage(wpWelcome, 'Upgrade or Repair',
     'JSON API Forge Editor is already installed',
     'Your projects and settings are kept. Only application files are replaced.', True, False);
   MaintenancePage.Add('Upgrade to v{#ProductVersion}');
@@ -164,7 +164,8 @@ end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PageID = MaintenancePage.ID) and (ExistingDir = '');
+  Result := ((PageID = MaintenancePage.ID) and (ExistingDir = ''))
+    or ((PageID = wpSelectDir) and (ExistingDir <> ''));
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

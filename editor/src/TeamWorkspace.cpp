@@ -1659,10 +1659,13 @@ void TeamWorkspace::openCall(const QUrl &url)
                             : QStringLiteral("The call page could not load. Check the connection or open it in your browser."));
         if (!ok) { return; }
         const QPointer<QLabel> status(loading);
-        view->page()->runJavaScript(QStringLiteral("document.documentElement.getAttribute('data-forge-call-client')"),
+        view->page()->runJavaScript(QStringLiteral("({revision:document.documentElement.getAttribute('data-forge-call-client'),started:!!window.forgeCallClientStarted})"),
             [status](const QVariant &revision) {
-                if (status && revision.toString() != QStringLiteral("2")) {
+                const auto state = revision.toMap();
+                if (status && state.value(QStringLiteral("revision")).toString() != QStringLiteral("2")) {
                     status->setText(QStringLiteral("This server returned an older or unavailable call page. Update main, restart the server and reopen the call. You can also try Open in browser."));
+                } else if (status && !state.value(QStringLiteral("started")).toBool()) {
+                    status->setText(QStringLiteral("The call script could not start. Check the server Content-Security-Policy or choose Open in browser."));
                 }
             });
     });
