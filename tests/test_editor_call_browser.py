@@ -257,3 +257,18 @@ def test_consumed_ticket_shows_connection_error(call_server, browser):
     assert second.locator("#join").is_hidden()
     first.close()
     second.close()
+
+
+def test_late_socket_error_does_not_override_user_leave(call_server, browser):
+    client, base, area = call_server
+    call = client.post("/calls", json={"area_id": area, "mode": "audio"}).json()["id"]
+    page = browser.new_page()
+    page.add_init_script("""window.WebSocket=class { static OPEN=1; readyState=0;
+        constructor(){window.__socket=this;} close(){this.readyState=3;} };""")
+    ticket = client.post(f"/calls/{call}/ticket").json()["ticket"]
+    page.goto(f"{base}/call-client/{call}#ticket={ticket}")
+    page.locator("#leave").click()
+    page.evaluate("window.__socket.onerror()")
+    assert page.locator("#state").text_content() == "Call ended"
+    assert page.locator("#error").is_hidden()
+    page.close()

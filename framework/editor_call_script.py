@@ -45,6 +45,7 @@ CALL_SCRIPT = r"""
   }
   window.forgeCallLeave = leave;
   function connectionFailed(message) {
+    if (ended) return;
     error(message); leave();
     phase('Unable to connect', 'Return to the Editor and request a new call after resolving the issue below.');
   }
