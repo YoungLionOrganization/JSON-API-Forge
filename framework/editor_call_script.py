@@ -88,8 +88,19 @@ CALL_SCRIPT = r"""
       return;
     }
     if (message.type === 'heartbeat') return;
-    if (message.type === 'peer_joined') { names.set(message.sender, message.display_name || 'Team member'); return; }
-    if (message.type === 'peer_left') { removePeer(message.sender); return; }
+    if (message.type === 'peer_joined') {
+      names.set(message.sender, message.display_name || 'Team member');
+      // Stable offer ownership also covers concurrent joins with empty peer snapshots.
+      if (stream && hello.connection_id < message.sender) await peer(message.sender, true);
+      return;
+    }
+    if (message.type === 'peer_left') {
+      names.delete(message.sender); removePeer(message.sender);
+      for (let index = pending.length - 1; index >= 0; index--) {
+        if (pending[index].sender === message.sender) pending.splice(index, 1);
+      }
+      return;
+    }
     if (!['offer','answer','ice'].includes(message.type)) return;
     if (!stream) {
       if (pending.length >= 256) throw new Error('Too many queued call signals. Reopen the call from the Editor.');
@@ -127,9 +138,9 @@ CALL_SCRIPT = r"""
       clearTimeout(timer); tile('local', 'You', stream, true);
       $('join').hidden = true; $('mic').disabled = false; $('camera').disabled = mode !== 'video';
       phase('In call', peers.size ? 'Connecting to participants…' : 'Waiting for others. They can choose Join call in this space.');
-      for (const item of hello.peers || []) {
-        if (pending.some(packet => packet.sender === item.connection_id && packet.type === 'offer')) continue;
-        await peer(item.connection_id, true);
+      for (const id of names.keys()) {
+        if (hello.connection_id >= id || pending.some(packet => packet.sender === id && packet.type === 'offer')) continue;
+        await peer(id, true);
       }
       for (const packet of pending.splice(0)) await enqueue(packet);
     } catch (reason) {

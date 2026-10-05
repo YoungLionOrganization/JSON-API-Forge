@@ -42,7 +42,7 @@ def call_server(tmp_path):
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         listener.listen(128)
-        server = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False))
+        server = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False, timeout_graceful_shutdown=5))
         thread = threading.Thread(target=lambda: server.run(sockets=[listener]), daemon=True)
         thread.start()
         deadline = time.monotonic() + 15
@@ -90,7 +90,24 @@ def browser():
 
 
 @pytest.mark.parametrize("mode", ["audio", "video"])
-def test_two_participant_media_and_controls(call_server, browser, mode):
+@pytest.mark.parametrize("empty_snapshot", [False, True], ids=["normal-join", "concurrent-join"])
+def test_two_participant_media_and_controls(call_server, browser, mode, empty_snapshot, monkeypatch):
+    if empty_snapshot:
+        from framework.editor_identity import EditorIdentityStore
+
+        original = EditorIdentityStore.join_call
+
+        async def concurrent_snapshot(store, *args):
+            # Reproduce two simultaneous PostgreSQL transactions observing no peers.
+            await original(store, *args)
+            return []
+
+        async def concurrent_cursor(store, *args):
+            # Both transactions read their signal cursor before either join commits.
+            return 0
+
+        monkeypatch.setattr(EditorIdentityStore, "join_call", concurrent_snapshot)
+        monkeypatch.setattr(EditorIdentityStore, "current_signal_sequence", concurrent_cursor)
     client, base, area = call_server
     response = client.post("/calls", json={"area_id": area, "mode": mode})
     assert response.status_code == 201
