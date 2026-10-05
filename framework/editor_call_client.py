@@ -5,6 +5,8 @@ import json
 import secrets
 from typing import Any
 
+from .editor_call_script import CALL_SCRIPT
+
 
 def parse_ice_servers(raw: str) -> list[dict[str, Any]]:
     """Parse a bounded WebRTC ICE configuration without accepting arbitrary URLs."""
@@ -51,92 +53,9 @@ def call_client_page() -> tuple[str, str]:
     """Return the self-contained WebRTC client and its per-response CSP nonce."""
     nonce = secrets.token_urlsafe(18)
     document = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>JSON API Forge call</title>
-  <style>
-    :root{{--amber:#f2b84b;--amber2:#ffd071;--graphite:#202225;--panel:#2a2d31;--line:#41454b;--text:#f2f0ea;--muted:#aaa69d}}
-    *{{box-sizing:border-box}} body{{margin:0;background:#202225;color:var(--text);font:14px Inter,Segoe UI,sans-serif}}
-    header{{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);background:#26282c}}
-    .mark{{color:var(--amber);font-size:24px;font-weight:900}} .title{{font-weight:750}} .state{{margin-left:auto;color:var(--muted)}}
-    main{{padding:18px}} #videos{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}}
-    .tile{{position:relative;min-height:190px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#17181a}}
-    video{{width:100%;height:100%;min-height:190px;object-fit:cover;background:#17181a}}
-    .name{{position:absolute;left:10px;bottom:9px;padding:5px 8px;border-radius:7px;background:#111b;color:#fff}}
-    footer{{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:9px;padding:13px;background:#26282cee;border-top:1px solid var(--line)}}
-    button{{min-width:110px;padding:10px 14px;border-radius:9px;border:1px solid var(--line);background:#32353a;color:var(--text);font-weight:700;cursor:pointer}}
-    button:hover{{border-color:var(--amber)}} button.primary{{background:var(--amber);border-color:var(--amber2);color:#202225}} button.danger{{background:#603034;border-color:#8b454b}}
-    #error{{display:none;margin:18px;padding:12px;border-radius:9px;background:#512d31;color:#ffd9dd}}
-  </style>
-</head>
-<body>
-  <header><div class="mark">{{F}}</div><div><div class="title">JSON API Forge secure call</div><div id="mode">Authenticated WebRTC workspace</div></div><div class="state" id="state">Waiting for secure authorization…</div></header>
-  <div id="error"></div><main><div id="videos"></div></main>
-  <footer><button id="mic">Mute microphone</button><button id="camera">Disable camera</button><button class="danger" id="leave">Leave</button></footer>
-  <script nonce="{html.escape(nonce)}">
-  (() => {{
-    'use strict';
-    const fragment=new URLSearchParams(location.hash.slice(1));
-    const ticket=fragment.get('ticket')||'';
-    history.replaceState(null,'',location.pathname);
-    const state=document.getElementById('state'), error=document.getElementById('error'), videos=document.getElementById('videos');
-    const peers=new Map(); let socket=null, localStream=null, iceServers=[], mode='audio';
-    document.getElementById('mode').textContent=mode==='video'?'Video · peer-to-peer encrypted media':'Audio · peer-to-peer encrypted media';
-    function fail(message){{error.textContent=message;error.style.display='block';state.textContent='Disconnected';}}
-    function tile(id,label,stream,muted=false){{
-      let box=document.getElementById('peer-'+id); if(box) return box.querySelector('video');
-      box=document.createElement('div');box.className='tile';box.id='peer-'+id;
-      const video=document.createElement('video');video.autoplay=true;video.playsInline=true;video.muted=muted;video.srcObject=stream;
-      const name=document.createElement('div');name.className='name';name.textContent=label;
-      box.append(video,name);videos.appendChild(box);return video;
-    }}
-    function send(value){{if(socket&&socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify(value));}}
-    async function peer(id, initiate=false){{
-      if(peers.has(id)) return peers.get(id);
-      const pc=new RTCPeerConnection({{iceServers}});peers.set(id,pc);
-      localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
-      pc.ontrack=e=>tile(id,'Team member',e.streams[0]);
-      pc.onicecandidate=e=>{{if(e.candidate)send({{type:'ice',target:id,candidate:e.candidate.toJSON()}})}};
-      pc.onconnectionstatechange=()=>{{if(['failed','closed','disconnected'].includes(pc.connectionState)){{document.getElementById('peer-'+id)?.remove();peers.delete(id)}}}};
-      if(initiate){{const offer=await pc.createOffer();await pc.setLocalDescription(offer);send({{type:'offer',target:id,sdp:offer.sdp}})}}
-      return pc;
-    }}
-    async function signal(message){{
-      if(message.type==='peers'){{
-        if(localStream)return;
-        mode=message.mode==='video'?'video':'audio';iceServers=Array.isArray(message.ice_servers)?message.ice_servers:[];
-        document.getElementById('mode').textContent=mode==='video'?'Video · peer-to-peer encrypted media':'Audio · peer-to-peer encrypted media';
-        localStream=await navigator.mediaDevices.getUserMedia({{audio:true,video:mode==='video'}});tile('local','You',localStream,true);
-        if(mode!=='video')document.getElementById('camera').style.display='none';
-        for(const item of message.peers||[])await peer(item.connection_id,true);
-        state.textContent='Connected · media stays between participants';return;
-      }}
-      if(message.type==='peer_joined'||message.type==='heartbeat')return;
-      if(message.type==='peer_left'){{peers.get(message.sender)?.close();peers.delete(message.sender);document.getElementById('peer-'+message.sender)?.remove();return}}
-      const pc=await peer(message.sender,false);
-      if(message.type==='offer'){{await pc.setRemoteDescription({{type:'offer',sdp:message.sdp}});const answer=await pc.createAnswer();await pc.setLocalDescription(answer);send({{type:'answer',target:message.sender,sdp:answer.sdp}})}}
-      else if(message.type==='answer')await pc.setRemoteDescription({{type:'answer',sdp:message.sdp}});
-      else if(message.type==='ice'&&message.candidate)await pc.addIceCandidate(message.candidate);
-    }}
-    async function start(){{
-      if(!ticket)throw new Error('This one-time call link is missing its ticket. Request a new link from the Editor.');
-      const scheme=location.protocol==='https:'?'wss:':'ws:';
-      socket=new WebSocket(
-        scheme+'//'+location.host+location.pathname.replace('/call-client/','/ws/calls/'),
-        ['forge-call-v1',ticket]
-      );
-      socket.onopen=()=>state.textContent='Authorizing one-time ticket…';
-      socket.onmessage=event=>{{try{{signal(JSON.parse(event.data)).catch(e=>{{socket?.close();fail(e.message)}})}}catch(e){{socket?.close();fail('Invalid signaling message')}}}};
-      socket.onerror=()=>fail('The secure signaling connection failed.');
-      socket.onclose=()=>{{if(state.textContent.startsWith('Connected'))state.textContent='Call ended'}};
-    }}
-    document.getElementById('mic').onclick=e=>{{const t=localStream?.getAudioTracks()[0];if(t){{t.enabled=!t.enabled;e.target.textContent=t.enabled?'Mute microphone':'Unmute microphone'}}}};
-    document.getElementById('camera').onclick=e=>{{const t=localStream?.getVideoTracks()[0];if(t){{t.enabled=!t.enabled;e.target.textContent=t.enabled?'Disable camera':'Enable camera'}}}};
-    document.getElementById('leave').onclick=()=>{{socket?.close();localStream?.getTracks().forEach(t=>t.stop());peers.forEach(p=>p.close());location.replace('about:blank')}};
-    start().catch(e=>fail(e.message||'Camera or microphone permission was denied.'));
-  }})();
-  </script>
-</body></html>"""
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Forge call</title>
+<style>
+:root{{--amber:#f2b84b;--text:#eceef2;--muted:#a6a9b2}}*{{box-sizing:border-box}}[hidden]{{display:none!important}}
+body{{margin:0;background:#202225;color:var(--text);font:15px 'Segoe UI',sans-serif}}header{{display:flex;justify-content:space-between;align-items:center;padding:18px 24px;background:#282b30;border-bottom:1px solid #41444b}}h1{{font-size:18px;margin:0}}#mode,#count{{color:var(--muted);font-size:13px}}main{{max-width:1200px;margin:auto;padding:28px 24px 130px}}.status{{background:#292d34;border:1px solid #444950;border-radius:14px;padding:24px;margin-bottom:20px;text-align:center}}#state{{margin:0 0 10px;font-size:25px;color:var(--amber)}}#detail{{color:var(--muted);line-height:1.6;margin:0 auto 18px;max-width:680px}}#error{{margin:12px 0;padding:14px;background:#502b32;border-radius:9px;color:#ffdbe1;line-height:1.5}}#videos{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}}.tile{{position:relative;min-height:230px;background:#30323b;border:1px solid #464956;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center}}.avatar{{display:grid;place-items:center;width:88px;height:88px;border-radius:50%;background:#746040;color:#fff0cc;font-size:38px;font-weight:bold}}video{{position:absolute;width:1px;height:1px;opacity:0}}.has-video video{{width:100%;height:100%;object-fit:cover;opacity:1}}.name{{position:absolute;bottom:12px;left:12px;padding:5px 9px;border-radius:7px;background:#17181add}}footer{{position:fixed;bottom:0;left:0;right:0;padding:18px;background:#25272def;border-top:1px solid #454953;display:flex;justify-content:center;gap:10px;flex-wrap:wrap}}button{{padding:12px 18px;border:1px solid #505560;border-radius:9px;background:#363a43;color:var(--text);font:600 14px 'Segoe UI',sans-serif;cursor:pointer}}button:hover{{border-color:var(--amber)}}button:focus-visible{{outline:2px solid var(--amber)}}button:disabled{{opacity:.5;cursor:default}}.primary{{background:var(--amber);color:#212225;border-color:var(--amber)}}.danger{{background:#a83946;border-color:#bf5260}}@media(max-width:540px){{main{{padding:15px 12px 145px}}header{{padding:14px}}#state{{font-size:21px}}.status{{padding:18px 12px}}footer{{padding:12px}}button{{padding:10px 12px}}}}
+</style></head><body><header><div><h1>Forge team call</h1><span id="mode">Private voice / video room</span></div><span id="count">Preparing your room</span></header><main><section class="status" aria-live="polite"><h2 id="state">Connecting to your call</h2><p id="detail">Checking your connection and call access…</p><button id="join" class="primary" hidden disabled>Join with microphone</button><div id="error" role="alert" hidden></div></section><div id="videos"></div></main><footer><button id="mic" disabled>Mute microphone</button><button id="camera" hidden disabled>Disable camera</button><button id="sound" hidden>Enable sound</button><button id="leave" class="danger">Leave call</button></footer><script nonce="{html.escape(nonce)}">{CALL_SCRIPT}</script></body></html>"""
     return document, nonce

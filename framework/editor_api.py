@@ -815,6 +815,7 @@ def register_editor_api(
             "database_browser": settings.editor_database_browser_enabled and access.permits("databases.metadata.read"),
             "collaboration": settings.editor_collaboration_enabled and access.permits("areas.read"),
             "calls": settings.editor_calls_enabled and access.permits("calls.join"),
+            "call_discovery": settings.editor_calls_enabled and access.permits("calls.join"),
             "graph_schema_version": 1,
             "max_document_bytes": settings.editor_max_document_bytes,
             "max_attachment_bytes": settings.editor_max_attachment_bytes,
@@ -1221,6 +1222,15 @@ def register_editor_api(
         )
         return call
 
+    @router.get("/areas/{area_id}/calls")
+    async def area_calls(area_id: str, request: Request):
+        if not settings.editor_calls_enabled:
+            raise HTTPException(status_code=403, detail="Editor calls are disabled")
+        principal = await principal_for(request)
+        project = await store_for(request).area_project(area_id)
+        access = await access_for_principal(request, principal, "calls.join", project)
+        return {"calls": await store_for(request).list_calls(access, area_id)}
+
     @router.post("/calls/{call_id}/ticket")
     async def create_call_ticket(call_id: str, request: Request, response: Response):
         if not settings.editor_calls_enabled:
@@ -1277,8 +1287,8 @@ def register_editor_api(
             return
 
         await websocket.accept(subprotocol=_CALL_PROTOCOL)
-        peers = await store.join_call(call_id, principal, connection_id)
         sequence = await store.current_signal_sequence(call_id)
+        peers = await store.join_call(call_id, principal, connection_id)
         await websocket.send_json(
             {
                 "type": "peers",

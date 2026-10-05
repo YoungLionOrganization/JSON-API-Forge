@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     and_,
     delete,
+    func,
     insert,
     or_,
     select,
@@ -1451,6 +1452,29 @@ class EditorIdentityStore:
                 )
             )
         return raw
+
+    async def list_calls(self, access: EditorAccess, area_id: str) -> list[dict[str, Any]]:
+        await self.visible_area(access, area_id)
+        now = _now()
+        participants = func.count(editor_call_participants.c.connection_id)
+        query = (
+            select(editor_calls, editor_users.c.display_name, participants.label("participants"))
+            .join(editor_users, editor_users.c.id == editor_calls.c.created_by)
+            .outerjoin(
+                editor_call_participants,
+                and_(
+                    editor_call_participants.c.call_id == editor_calls.c.id,
+                    editor_call_participants.c.last_seen_at > now - timedelta(seconds=45),
+                ),
+            )
+            .where(and_(editor_calls.c.area_id == area_id, editor_calls.c.status == "open", editor_calls.c.expires_at > now))
+            .group_by(*editor_calls.c, editor_users.c.display_name)
+            .having(or_(participants > 0, editor_calls.c.created_at > now - timedelta(minutes=2)))
+            .order_by(editor_calls.c.created_at.desc())
+            .limit(50)
+        )
+        async with self.engine.connect() as connection:
+            return [dict(row) for row in (await connection.execute(query)).mappings()]
 
     async def call(self, call_id: str) -> dict[str, Any]:
         async with self.engine.connect() as connection:

@@ -108,10 +108,11 @@ def test_pattern_properties_cannot_reenter_stdlib_regex_through_unevaluated_prop
         )
 
 
-def test_call_client_declares_mode_before_use_and_rejects_ice_controls():
-    page, _nonce = call_client_page()
-    declaration = "let socket=null, localStream=null, iceServers=[], mode='audio';"
-    assert page.index(declaration) < page.index("mode==='video'")
+def test_call_client_has_nonce_and_rejects_ice_controls():
+    # Mode initialization and negotiation are exercised by the real-browser contract.
+    page, nonce = call_client_page()
+    assert f'<script nonce="{nonce}">' in page
+    assert page.count("<script") == 1
     with pytest.raises(RuntimeError):
         parse_ice_servers('[{"urls":"stun:example.test\\nturn:internal.test"}]')
     with pytest.raises(RuntimeError):

@@ -249,6 +249,10 @@ def test_login_throttle_profile_collaboration_files_and_calls(tmp_path: Path) ->
         call = client.post("/__forge/editor/v1/calls", headers=headers, json={"area_id": area_id, "mode": "video"})
         assert call.status_code == 201
         call_id = call.json()["id"]
+        listed_calls = client.get(f"/__forge/editor/v1/areas/{area_id}/calls", headers=headers)
+        assert listed_calls.status_code == 200
+        assert listed_calls.json()["calls"][0]["id"] == call_id
+        assert listed_calls.json()["calls"][0]["participants"] == 0
         ticket = client.post(f"/__forge/editor/v1/calls/{call_id}/ticket", headers=headers).json()["ticket"]
         page = client.get(f"/__forge/editor/v1/call-client/{call_id}")
         assert page.status_code == 200
@@ -264,6 +268,7 @@ def test_login_throttle_profile_collaboration_files_and_calls(tmp_path: Path) ->
             hello = socket.receive_json()
             assert hello["type"] == "peers" and hello["peers"] == []
             assert hello["mode"] == "video"
+            assert client.get(f"/__forge/editor/v1/areas/{area_id}/calls", headers=headers).json()["calls"][0]["participants"] == 1
             assert hello["ice_servers"][0]["credential"] == "TURN_TEST_SECRET"
             socket.send_json({"type": "heartbeat"})
             socket.send_json({"type": "hangup"})
