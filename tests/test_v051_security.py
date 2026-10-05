@@ -112,7 +112,8 @@ def test_call_client_has_nonce_and_rejects_ice_controls():
     # Mode initialization and negotiation are exercised by the real-browser contract.
     page, nonce = call_client_page()
     assert f'<script nonce="{nonce}">' in page
-    assert page.count("<script") == 1
+    # The independent startup fallback and media state machine both need the nonce.
+    assert page.count(f'<script nonce="{nonce}">') == page.count("<script") == 2
     with pytest.raises(RuntimeError):
         parse_ice_servers('[{"urls":"stun:example.test\\nturn:internal.test"}]')
     with pytest.raises(RuntimeError):

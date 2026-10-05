@@ -76,3 +76,15 @@ Expired artifacts require a new successful platform run and fresh validation. A 
 [`release/release.json`](release/release.json) declares the version, component, workflow gates and artifact. Build identity is stored in `build.json` and carried into the release as `release-build.json`; this records the source SHA, build run ID, run attempt, version and verified asset hashes. The publisher reuses built files and does not rebuild binaries during publication.
 
 Use the updated [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) for the server review. Historical v0.5.1 handoff notes remain historical and are not this version's publication instructions.
+
+## Editor call compatibility
+
+The current server advertises call-client revision 2. Upgrade and restart the
+running server together with Editor v0.5.2. The previous “Waiting for secure
+authorization…” page was served by older main builds. The new page uses an
+independent startup fallback and a bounded authorization timeout, and reports
+expired tickets or failed signaling connections visibly. Call pages remain
+uncached, tickets remain one-time and the nonce-based content security policy
+applies to both scripts. Browser tests cover two-participant audio/video,
+concurrent joins, denied media, missing/reused tickets, stalled authorization
+and a broken primary script.

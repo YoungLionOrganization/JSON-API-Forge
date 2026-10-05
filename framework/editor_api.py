@@ -816,6 +816,7 @@ def register_editor_api(
             "collaboration": settings.editor_collaboration_enabled and access.permits("areas.read"),
             "calls": settings.editor_calls_enabled and access.permits("calls.join"),
             "call_discovery": settings.editor_calls_enabled and access.permits("calls.join"),
+            "call_client_revision": 2,
             "graph_schema_version": 1,
             "max_document_bytes": settings.editor_max_document_bytes,
             "max_attachment_bytes": settings.editor_max_attachment_bytes,

@@ -212,3 +212,48 @@ def test_permission_denial_and_missing_ticket_are_visible(call_server, browser):
     assert page.locator("#join").is_enabled()
     assert page.locator("#mic").is_disabled()
     page.close()
+
+
+def test_authorization_timeout_does_not_wait_forever(call_server, browser):
+    client, base, area = call_server
+    call = client.post("/calls", json={"area_id": area, "mode": "audio"}).json()["id"]
+    page = browser.new_page()
+    page.clock.install()
+    page.add_init_script("""window.WebSocket=class { static OPEN=1; readyState=0; close(){this.readyState=3;} };""")
+    ticket = client.post(f"/calls/{call}/ticket").json()["ticket"]
+    page.goto(f"{base}/call-client/{call}#ticket={ticket}")
+    page.clock.fast_forward(16000)
+    assert page.locator("#state").text_content() == "Unable to connect"
+    assert "15 seconds" in page.locator("#error").text_content()
+    assert page.locator("#join").is_hidden()
+    page.close()
+
+
+def test_broken_call_script_has_independent_fallback(call_server, browser, monkeypatch):
+    import framework.editor_call_client as call_client
+
+    monkeypatch.setattr(call_client, "CALL_SCRIPT", "function broken(")
+    _, base, _ = call_server
+    page = browser.new_page()
+    page.clock.install()
+    page.goto(f"{base}/call-client/test")
+    page.clock.fast_forward(13000)
+    assert page.locator("#state").text_content() == "Call client could not start"
+    assert "Content-Security-Policy" in page.locator("#error").text_content()
+    page.close()
+
+
+def test_consumed_ticket_shows_connection_error(call_server, browser):
+    client, base, area = call_server
+    assert client.get("/capabilities").json()["call_client_revision"] == 2
+    call = client.post("/calls", json={"area_id": area, "mode": "audio"}).json()["id"]
+    ticket = client.post(f"/calls/{call}/ticket").json()["ticket"]
+    first, second = browser.new_page(), browser.new_page()
+    first.goto(f"{base}/call-client/{call}#ticket={ticket}")
+    until(first, "document.getElementById('state').textContent === 'Ready to join'")
+    second.goto(f"{base}/call-client/{call}#ticket={ticket}")
+    until(second, "document.getElementById('state').textContent === 'Unable to connect'")
+    assert second.locator("#error").is_visible()
+    assert second.locator("#join").is_hidden()
+    first.close()
+    second.close()

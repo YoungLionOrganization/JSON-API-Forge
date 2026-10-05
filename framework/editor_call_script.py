@@ -1,8 +1,22 @@
 """Browser-side call state machine. No credentials are persisted or logged."""
 
+CALL_BOOTSTRAP_SCRIPT = r"""
+(function () {
+  setTimeout(function () {
+    if (window.forgeCallClientStarted) return;
+    document.getElementById('state').textContent = 'Call client could not start';
+    document.getElementById('detail').textContent = 'Update the main server and reopen this call in a current browser.';
+    var box = document.getElementById('error');
+    box.textContent = 'The call script did not start. Check browser compatibility and the server Content-Security-Policy.';
+    box.hidden = false;
+  }, 12000);
+})();
+"""
+
 CALL_SCRIPT = r"""
 (() => {
   'use strict';
+  window.forgeCallClientStarted = true;
   const $ = id => document.getElementById(id);
   const ticket = new URLSearchParams(location.hash.slice(1)).get('ticket') || '';
   history.replaceState(null, '', location.pathname);
@@ -30,6 +44,10 @@ CALL_SCRIPT = r"""
     $('join').hidden = true; $('mic').disabled = true; $('camera').disabled = true;
   }
   window.forgeCallLeave = leave;
+  function connectionFailed(message) {
+    error(message); leave();
+    phase('Unable to connect', 'Return to the Editor and request a new call after resolving the issue below.');
+  }
   window.addEventListener('pagehide', leave);
   window.addEventListener('hashchange', () => {
     if (new URLSearchParams(location.hash.slice(1)).has('ticket')) { leave(); location.reload(); }
@@ -171,14 +189,14 @@ CALL_SCRIPT = r"""
   $('leave').onclick = leave;
   $('sound').onclick = () => { document.querySelectorAll('video').forEach(video => { video.play().catch(() => error('Audio playback is blocked. Check your browser sound settings.')); }); $('sound').hidden = true; };
   if (!ticket) { phase('Call link unavailable', 'Return to the Editor and request a new call.'); error('The one-time authorization ticket is missing.'); return; }
-  authorizationTimer = setTimeout(() => { if (!hello && !ended) { error('The server did not authorize this call within 15 seconds. Check the connection and reopen the call from the Editor.'); leave(); } }, 15000);
+  authorizationTimer = setTimeout(() => { if (!hello && !ended) connectionFailed('The server did not authorize this call within 15 seconds. Check the connection and reopen the call from the Editor.'); }, 15000);
   try {
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
     socket = new WebSocket(scheme + '//' + location.host + location.pathname.replace('/call-client/', '/ws/calls/'), ['forge-call-v1', ticket]);
     socket.onopen = () => phase('Checking call access', 'The server is validating your one-time ticket…');
     socket.onmessage = event => { try { enqueue(JSON.parse(event.data)); } catch { error('The server returned an invalid call signal.'); leave(); } };
-    socket.onerror = () => { error('Could not reach the call connection. Verify the server and reverse-proxy WebSocket configuration.'); leave(); };
-    socket.onclose = event => { if (!ended) { error(event.code === 1008 ? 'Call authorization was denied or the ticket expired. Request a new call link.' : 'The call connection closed. Reopen the call to reconnect.'); leave(); } };
-  } catch (reason) { error(reason.message || 'Call connection failed.'); leave(); }
+    socket.onerror = () => connectionFailed('Could not reach the call connection. Verify the server and reverse-proxy WebSocket configuration.');
+    socket.onclose = event => { if (!ended) connectionFailed(event.code === 1008 ? 'Call authorization was denied or the ticket expired. Request a new call link.' : 'The call connection closed. Reopen the call to reconnect.'); };
+  } catch (reason) { connectionFailed(reason.message || 'Call connection failed.'); }
 })();
 """
