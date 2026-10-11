@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased maintenance
+
+- Never replay multipart file bodies across cluster endpoints, including PUT and keyed POST requests.
+- Cancel and drain sibling operations when an async bulk item is cancelled, so no owned operation continues after bulk returns.
+- Keep these fixes separate from the frozen v0.5.2 publication candidate.
+
 ## 0.5.2 — 2026-10-11
 
 - Add lazy synchronous and asynchronous cursor/offset traversal with resumable cursors, strict page validation, cycle detection, item bounds and cancellation propagation.

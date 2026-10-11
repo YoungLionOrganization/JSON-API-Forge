@@ -43,6 +43,8 @@ Iteration fetches on demand, buffers at most one bounded response and stops at `
 
 Collection iterators and cluster bulk helpers are bounded. The default bulk input ceiling is 10,000 items; raise it only after evaluating memory and downstream capacity.
 
+Multipart file uploads are never retried or failed over automatically, even with an idempotency key. Retry explicitly with a fresh body after checking the upload outcome. Cancelling async bulk work, including cancellation raised by an individual operation, cancels and waits for its sibling operations before returning. Completed server-side effects cannot be rolled back by cancellation.
+
 ## Control-plane security
 
 - Remote HTTP is rejected; `allow_insecure_http=True` is restricted to loopback development endpoints.

@@ -77,6 +77,9 @@ def _retryable(error: Exception) -> bool:
 
 
 def _failover_permitted(method: str, options: Mapping[str, Any]) -> bool:
+    if options.get("files") is not None:
+        # Multipart bodies may contain consumed streams and cannot be safely replayed.
+        return False
     return method.upper() in {"GET", "HEAD", "OPTIONS", "PUT", "DELETE"} or bool(options.get("idempotency_key"))
 
 
@@ -380,7 +383,16 @@ class AsyncForgeCluster:
                 except Exception as exc:
                     return BulkResult(index=index, error=exc)
 
-        return list(await asyncio.gather(*(run(index, operation) for index, operation in enumerate(bounded_operations))))
+        tasks = [asyncio.create_task(run(index, operation)) for index, operation in enumerate(bounded_operations)]
+        try:
+            return list(await asyncio.gather(*tasks))
+        except BaseException:
+            # A cancelled item makes gather return before its siblings finish.
+            # Own and drain them so mutations cannot continue after bulk exits.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     async def health_all(self) -> dict[str, ForgeResponse[Any] | Exception]:
         async def health(endpoint: ForgeEndpoint):
