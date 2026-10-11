@@ -9,6 +9,7 @@ import shutil
 import struct
 import subprocess
 import tempfile
+import time
 import unittest
 import uuid
 
@@ -144,6 +145,14 @@ class WindowsInstallerTests(unittest.TestCase):
                     startup.wShowWindow = 0
                     subprocess.run([str(uninstall), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'],
                                    startupinfo=startup, timeout=120, check=True)
+                    # Inno delegates deletion of its own executable to a helper.
+                    # A successful parent exit is earlier than that file's removal,
+                    # especially under Windows ARM64's x86 emulation.
+                    deadline = time.monotonic() + 20
+                    while (uninstall.exists() or executable.exists()) and time.monotonic() < deadline:
+                        time.sleep(0.1)
+                    self.assertFalse(uninstall.exists(), 'Uninstaller self-removal did not finish')
+                    self.assertFalse(executable.exists(), 'Uninstall did not remove the application')
                 try:
                     winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, legacy_key, winreg.KEY_WOW64_32KEY)
                 except FileNotFoundError:
