@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 from collections import OrderedDict
 from hashlib import sha256
@@ -208,15 +209,22 @@ class CacheManager:
             return None, "miss"
         try:
             parsed = json.loads(raw)
-        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+            envelope = isinstance(parsed, dict) and parsed.get("__forge_cache_v") == 1
+            if envelope:
+                if "value" not in parsed:
+                    raise ValueError("Cache envelope has no value")
+                fresh_until = parsed.get("fresh_until")
+                if isinstance(fresh_until, bool) or not isinstance(fresh_until, (int, float)) or not math.isfinite(fresh_until):
+                    raise ValueError("Cache envelope has an invalid expiry")
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError, OverflowError):
             log.warning("Discarding malformed cache entry key=%s", key)
             try:
                 await self.backend.delete(key)
             except Exception:
                 log.warning("Failed to delete malformed cache entry key=%s", key, exc_info=True)
             return None, "miss"
-        if isinstance(parsed, dict) and parsed.get("__forge_cache_v") == 1 and "value" in parsed:
-            state = "fresh" if time.time() <= float(parsed.get("fresh_until", 0)) else "stale"
+        if envelope:
+            state = "fresh" if time.time() <= fresh_until else "stale"
             return parsed["value"], state
         return parsed, "fresh"
 

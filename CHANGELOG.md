@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased maintenance
+
+- Reload malformed cache envelopes instead of returning internal metadata or failing requests on invalid, non-finite or overflowing expiry values.
+- Close Redis pub/sub resources when subscription setup fails or is cancelled, reject listeners that already stopped, and permit a clean subsequent connection attempt.
+- These changes are separate from the frozen v0.5.2 publication candidates.
+
 ## v0.5.2 (in development)
 
 - Normalize clipboard whitespace in release SHA input and add one-run publication of all four prepared component drafts, with full preflight, pinned source/asset manifests, controller CI gates and safe recovery after partial publication.
