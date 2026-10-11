@@ -124,7 +124,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: d6bb658ab2b7fa603bc3c6a788684dc6f0f58c29 # reviewed SDK v0.5.2
+          ref: d0c85eeb8516d0a7ce8e7d2d2b1f7f5a6cf7c122 # reviewed SDK v0.5.2
           path: sdk-source
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
