@@ -29,6 +29,11 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # GitHub hides private draft releases from tokens without push access.
+    # The validate command itself performs GET requests only.
+    permissions:
+      contents: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
