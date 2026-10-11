@@ -3,7 +3,7 @@ name: Python SDK build
 on:
   push:
     branches: [python-library]
-    tags: ["v0.5.*"]
+    tags: ["python-library-v0.5.*"]
   pull_request:
     branches: [python-library]
   workflow_dispatch:
@@ -58,9 +58,9 @@ jobs:
           scope = {}
           exec((root / "json_api_forge/_version.py").read_text(encoding="utf-8"), scope)
           versions = {project["version"], (root / "VERSION").read_text(encoding="utf-8").strip(), scope["__version__"]}
-          if project["name"] != "json-api-forge-client" or versions != {"0.5.1"}:
+          if project["name"] != "json-api-forge-client" or versions != {"0.5.2"}:
               raise SystemExit(f"SDK identity/version mismatch: {project['name']=}, {versions=}")
-          if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != f"v{project['version']}":
+          if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != f"python-library-v{project['version']}":
               raise SystemExit("tag does not match the SDK version")
           required = {
               "json_api_forge/control_plane.py", "json_api_forge/py.typed",
@@ -146,7 +146,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: c1fa3cd6aaa6010fa49301638463dbfc789deac2 # reviewed server v0.5.2
           path: server-source
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -225,7 +225,7 @@ jobs:
               "$PY" -m pip install --no-cache-dir .
               "$PY" -m pip check
               cd /tmp
-              "$PY" -c "import json_api_forge; from json_api_forge import EditorControlPlaneClient; assert json_api_forge.__version__ == \"0.5.1\"; assert EditorControlPlaneClient"
+              "$PY" -c "import json_api_forge; from json_api_forge import EditorControlPlaneClient; assert json_api_forge.__version__ == \"0.5.2\"; assert EditorControlPlaneClient"
             '
 
   coverage:
@@ -264,7 +264,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --upgrade pip build twine
+          python -m pip install --upgrade pip "build>=1.2,<2" "twine>=6,<8"
           export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
           python -m build --outdir build-first
           python -m build --outdir build-second
@@ -313,7 +313,7 @@ jobs:
           python -m venv "${{ runner.temp }}/forge-sdk-wheel"
           "${{ runner.temp }}/forge-sdk-wheel/bin/python" -m pip install dist/*.whl
           cd "${{ runner.temp }}"
-          "${{ runner.temp }}/forge-sdk-wheel/bin/python" -c "import json_api_forge; assert json_api_forge.__version__ == '0.5.1'"
+          "${{ runner.temp }}/forge-sdk-wheel/bin/python" -c "import json_api_forge; assert json_api_forge.__version__ == '0.5.2'"
           "${{ runner.temp }}/forge-sdk-wheel/bin/python" -c "from json_api_forge import EditorControlPlaneClient, AsyncEditorControlPlaneClient; assert EditorControlPlaneClient and AsyncEditorControlPlaneClient"
       - name: Assemble the manual PyPI/release handoff
         shell: bash
@@ -321,12 +321,13 @@ jobs:
           set -euo pipefail
           mkdir -p release/python-sdk
           cp dist/* release/python-sdk/
-          git archive --format=zip --prefix=JSON-API-Forge-python-library-v0.5.1/ -o release/python-sdk/JSON-API-Forge-python-library-v0.5.1-source.zip HEAD
+          git archive --format=zip --prefix=JSON-API-Forge-python-library-v0.5.2/ -o release/python-sdk/JSON-API-Forge-python-library-v0.5.2-source.zip HEAD
           cd release/python-sdk
           sha256sum * > SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: JSON-API-Forge-python-library-v0.5.1
+          name: JSON-API-Forge-python-library-v0.5.2
           path: release/python-sdk/*
           if-no-files-found: error
           retention-days: 30
+          overwrite: true

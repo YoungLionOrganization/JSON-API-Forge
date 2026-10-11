@@ -1,9 +1,9 @@
-# Python SDK v0.5.1 release checklist
+# Python SDK v0.5.2 release checklist
 
 ## Source and identity
 
 - [ ] The branch is `python-library` and contains no server, Editor, examples or deployment tree.
-- [ ] `pyproject.toml`, `VERSION` and `json_api_forge/_version.py` are exactly `0.5.1`.
+- [ ] `pyproject.toml`, `VERSION` and `json_api_forge/_version.py` are exactly `0.5.2`.
 - [ ] The distribution name is `json-api-forge-client`; the import remains `json_api_forge`.
 - [ ] `python scripts/check_manifest.py` passes on the exact commit.
 
@@ -18,6 +18,8 @@
 - [ ] CodeQL is green.
 - [ ] Two wheel builds match byte-for-byte and sdist payloads match.
 - [ ] The wheel is `py3-none-any`, contains only SDK packages and installs outside the checkout.
+
+- [ ] Release tag is `python-library-v0.5.2`; server and Editor tags are separate.
 
 ## Publish
 

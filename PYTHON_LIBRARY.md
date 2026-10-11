@@ -1,4 +1,4 @@
-# Python SDK contract — v0.5.1
+# Python SDK contract — v0.5.2
 
 Package name: `json-api-forge-client`
 
@@ -19,22 +19,42 @@ All response objects expose the decoded data, HTTP status, server request ID, id
 
 ## Retry and routing rules
 
-`RetryPolicy` uses capped exponential backoff and honors a bounded `Retry-After`. GET-like operations may retry according to policy. POST/PATCH/DELETE requests require an explicit idempotency key before the SDK permits retry or cross-endpoint failover. One request ID is preserved across allowed attempts.
+`RetryPolicy` uses capped exponential backoff and honors a bounded `Retry-After`. GET-like operations may retry according to policy. POST/PATCH requests require an explicit idempotency key before the SDK permits retry or cross-endpoint failover. One request ID is preserved across allowed attempts.
 
-Collection iterators and bulk helpers are bounded. The default bulk input ceiling is 10,000 items; raise it only after evaluating memory and downstream capacity.
+## Bounded collection traversal and atomic batches
+
+Both clients support `iter_items(..., pagination="offset" | "cursor")`. The default remains offset; use cursor mode only for resources configured with `pagination_mode: cursor`. Filters are preserved, and `params={"cursor": saved_cursor}` resumes a cursor. Cursor mode rejects `offset` and `sort`. Offset mode accepts an explicit non-negative starting offset.
+
+```python
+async with AsyncForgeClient(url, api_key=key) as forge:
+    async for task in forge.iter_items(
+        "task-board", "tasks-feed", pagination="cursor", page_size=50, max_items=500,
+        params={"status": "todo"},
+    ):
+        print(task["title"])
+    result = await forge.batch_create_items("task-board", "tasks", [
+        {"title": "Plan release"}, {"title": "Review release", "priority": 3},
+    ])
+```
+
+Iteration fetches on demand, buffers at most one bounded response and stops at `max_items`. Stopping or cancelling async iteration does not start a new page. Invalid pages and repeated cursors raise `ForgeHTTPError` with the server request ID. A cursor is not a database snapshot; changes to its ordering field during traversal can change results.
+
+`batch_create_items` sends one transaction to the resource's `/_batch` endpoint. It requires 1–5000 object payloads; the configured server `max_batch_size` may be lower. The entire batch succeeds or rolls back. The server batch endpoint does not implement idempotent replay, so the helper never automatically retries or splits it. If a network failure leaves the result uncertain, reconcile application identifiers before resubmitting.
+
+Collection iterators and cluster bulk helpers are bounded. The default bulk input ceiling is 10,000 items; raise it only after evaluating memory and downstream capacity.
 
 ## Control-plane security
 
 - Remote HTTP is rejected; `allow_insecure_http=True` is restricted to loopback development endpoints.
 - Embedded URL credentials, cross-host absolute paths, traversal, backslashes, fragments and control characters are rejected.
 - Redirect following, ambient proxy variables and cookie persistence are disabled.
-- Session, invitation and call credentials must match the server's exact v0.5.1 token formats.
+- Session, invitation and call credentials must match the server's exact v0.5.2 token formats.
 - Login/setup credentials are not reused as application API keys.
 - Adopted access tokens are removed from returned payloads and cleared on logout, close or HTTP 401.
 - Response and attachment sizes are bounded.
 - Uploads open regular non-symlink files with no-follow protection where supported, verify file identity and upload a bounded snapshot.
 - Downloads fsync a private temporary file, atomically replace the requested name and fsync the parent directory on POSIX.
-- Call tickets travel to the local browser client in the URL fragment; the browser then presents the ticket as a WebSocket subprotocol.
+- Call tickets travel to the local browser client in the URL fragment; the browser presents the ticket to the same-origin call API; v0.5.2 call-client revision 2 uses HTTP signaling.
 
 These controls reduce common client-side mistakes; they do not replace server authorization, TLS validation, secret storage or endpoint hardening.
 

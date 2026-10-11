@@ -8,8 +8,8 @@ import re
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable, Iterator, Mapping
-from typing import Any
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from typing import Any, Literal
 from urllib.parse import quote, unquote, urlsplit
 
 import httpx
@@ -17,6 +17,7 @@ import httpx
 from .errors import ForgeHTTPError, ForgeResponseTooLarge, ForgeTransportError, safe_error_text
 from .models import ForgeResponse, JsonObject, RequestAttempt
 from .options import RetryPolicy
+from .pagination import Pagination, batch_payload
 
 _JSON_ACCEPT = "application/json"
 _HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+\Z")
@@ -418,28 +419,18 @@ class ForgeClient:
         params: Mapping[str, Any] | None = None,
         page_size: int = 100,
         max_items: int = 10_000,
+        pagination: Literal["offset", "cursor"] = "offset",
     ) -> Iterator[JsonObject]:
-        if not 1 <= page_size <= 1000 or not 1 <= max_items <= 1_000_000:
-            raise ValueError("page_size or max_items is outside the supported bounds")
-        offset = 0
-        yielded = 0
-        base_params = dict(params or {})
-        while yielded < max_items:
-            page_params = {**base_params, "limit": min(page_size, max_items - yielded), "offset": offset}
-            response = self.list_items(project, resource, params=page_params)
-            if not isinstance(response.data, dict) or not isinstance(response.data.get("items"), list):
-                raise ForgeHTTPError(response.status_code, "List response does not contain an items array", response.request_id)
-            items = response.data["items"]
-            for item in items:
-                if not isinstance(item, dict):
-                    raise ForgeHTTPError(response.status_code, "List response contains a non-object item", response.request_id)
-                yield item
-                yielded += 1
-                if yielded >= max_items:
-                    return
-            if len(items) < page_params["limit"]:
+        pages = Pagination(params, page_size, max_items, pagination)
+        while True:
+            items, done = pages.consume(self.list_items(project, resource, params=pages.query()))
+            yield from items
+            if done:
                 return
-            offset += len(items)
+
+    def batch_create_items(self, project: str, resource: str, payloads: Sequence[Mapping[str, Any]]) -> ForgeResponse[JsonObject]:
+        """Submit one atomic batch; POST is never automatically retried."""
+        return self.request("POST", f"api/{_segment(project)}/v1/{_route(resource)}/_batch", json_body=batch_payload(payloads))
 
     def close(self) -> None:
         self._client.close()
@@ -627,6 +618,28 @@ class AsyncForgeClient:
             json_body=dict(payload),
             idempotency_key=idempotency_key,
         )
+
+    async def iter_items(
+        self,
+        project: str,
+        resource: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        page_size: int = 100,
+        max_items: int = 10_000,
+        pagination: Literal["offset", "cursor"] = "offset",
+    ) -> AsyncIterator[JsonObject]:
+        pages = Pagination(params, page_size, max_items, pagination)
+        while True:
+            items, done = pages.consume(await self.list_items(project, resource, params=pages.query()))
+            for item in items:
+                yield item
+            if done:
+                return
+
+    async def batch_create_items(self, project: str, resource: str, payloads: Sequence[Mapping[str, Any]]) -> ForgeResponse[JsonObject]:
+        """Submit one atomic batch; POST is never automatically retried."""
+        return await self.request("POST", f"api/{_segment(project)}/v1/{_route(resource)}/_batch", json_body=batch_payload(payloads))
 
     async def aclose(self) -> None:
         await self._client.aclose()

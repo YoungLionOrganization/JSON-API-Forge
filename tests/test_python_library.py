@@ -8,7 +8,7 @@ from json_api_forge import AsyncForgeClient, ForgeClient, ForgeHTTPError, ForgeR
 
 
 def test_public_facade_and_secure_url_validation():
-    assert json_api_forge.__version__ == "0.5.1"
+    assert json_api_forge.__version__ == "0.5.2"
     assert not hasattr(json_api_forge, "create_app")
     with pytest.raises(ValueError, match="plain HTTP"):
         ForgeClient("http://forge.test")

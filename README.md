@@ -1,8 +1,8 @@
-# JSON API Forge Python SDK v0.5.1
+# JSON API Forge Python SDK v0.5.2
 
 [![SDK builds](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/python-library.yml/badge.svg?branch=python-library)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/python-library.yml?query=branch%3Apython-library)
 [![CodeQL](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/codeql.yml/badge.svg?branch=python-library)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/codeql.yml?query=branch%3Apython-library)
-[![Version 0.5.1](https://img.shields.io/badge/version-0.5.1-D4A017)](VERSION)
+[![Version 0.5.2](https://img.shields.io/badge/version-0.5.2-D4A017)](VERSION)
 [![Python 3.10–3.14](https://img.shields.io/badge/Python-3.10%E2%80%933.14-3776AB?logo=python&logoColor=white)](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/main/pyproject.toml)
 [![Source available](https://img.shields.io/badge/license-source--available-555555)](LICENSE)
 
@@ -43,7 +43,7 @@ with ForgeClient("https://api.example.com", api_key=os.environ["FORGE_API_KEY"])
     created = forge.create_item(
         "my-service",
         "notes",
-        {"name": "ship v0.5.1"},
+        {"name": "ship v0.5.2"},
         idempotency_key="command-0192",
     )
 ```
@@ -80,7 +80,7 @@ with EditorControlPlaneClient("https://forge-admin.example.com") as control:
 
 The control-plane clients cover founder setup, invitation enrollment, profiles, roles, project/document access, validation, read-only database browsing, project areas, messages, notes, attachments, calls and audit records. Bearer sessions are held in a zeroable memory buffer and removed from returned authentication payloads.
 
-Security defaults include HTTPS-only remote URLs, no ambient proxy inheritance, no redirects or retained cookies, strict same-origin paths, exact token formats, bounded response bodies, non-symlink attachment snapshots and atomic downloads. WebRTC call tickets are placed in a URL fragment for the local call client, never in an HTTP query.
+Security defaults include HTTPS-only remote URLs, no ambient proxy inheritance, no redirects or retained cookies, strict same-origin paths, exact token formats, bounded response bodies, non-symlink attachment snapshots and atomic downloads. WebRTC call tickets are placed in a URL fragment for the local call client, never in an HTTP query. v0.5.2 uses the revision 2 HTTP signaling call client.
 
 ## Cluster and optional integrations
 
@@ -107,7 +107,9 @@ python -m build
 python -m twine check dist/*
 ```
 
-CI tests Linux x64/ARM64, Windows x64/ARM64 and macOS Intel/Apple Silicon, plus clean installs on Debian, Arch, Fedora, Rocky Linux 9/cPanel-family, openSUSE and Alpine/musl. A separate contract job checks out `main` and exercises this SDK against the real v0.5.1 control plane without copying server code into this branch.
+See [bounded cursor traversal and atomic batch creation](PYTHON_LIBRARY.md#bounded-collection-traversal-and-atomic-batches) for the new sync/async APIs.
+
+CI tests Linux x64/ARM64, Windows x64/ARM64 and macOS Intel/Apple Silicon, plus clean installs on Debian, Arch, Fedora, Rocky Linux 9/cPanel-family, openSUSE and Alpine/musl. A separate contract job checks out `main` and exercises this SDK against the real v0.5.2 control plane without copying server code into this branch.
 
 See [PYTHON_LIBRARY.md](PYTHON_LIBRARY.md) for the complete API and release contract.
 

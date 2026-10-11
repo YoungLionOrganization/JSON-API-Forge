@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "json-api-forge-client"
-version = "0.5.1"
+version = "0.5.2"
 description = "Typed sync/async client and Editor control-plane SDK for JSON API Forge"
 readme = "README.md"
 requires-python = ">=3.10"

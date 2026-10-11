@@ -9,6 +9,7 @@ from pathlib import Path
 
 MODULE_FLOORS: dict[str, float] = {
     "json_api_forge/client.py": 80.0,
+    "json_api_forge/pagination.py": 90.0,
     "json_api_forge/control_plane.py": 90.0,
     "json_api_forge/enterprise.py": 80.0,
     "json_api_forge/options.py": 95.0,
@@ -21,7 +22,7 @@ def main() -> int:
     parser.add_argument("--minimum", type=float, default=None)
     args = parser.parse_args()
     payload = json.loads(Path(args.report).read_text(encoding="utf-8"))
-    files = payload.get("files", {})
+    files = {name.replace("\\", "/"): value for name, value in payload.get("files", {}).items()}
     failures = []
     print("Critical module branch-aware coverage gates:")
     for module, configured_floor in MODULE_FLOORS.items():

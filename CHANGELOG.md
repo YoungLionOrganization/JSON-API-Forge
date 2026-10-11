@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2 — 2026-10-11
+
+- Add lazy synchronous and asynchronous cursor/offset traversal with resumable cursors, strict page validation, cycle detection, item bounds and cancellation propagation.
+- Add atomic batch-create helpers for heterogeneous rows; never retry an unkeyed batch POST.
+- Preserve explicit starting offsets and caller filters without mutating parameters.
+- Verify v0.5.2 collaboration, Unicode attachments and call handoff against a pinned real server.
+- Separate SDK release tags from server tags and update package/artifact identity to v0.5.2.
+
 ## 0.5.1 — 2026-09-06
 
 - Reject repeatedly encoded traversal, URL separators, malformed encoding, unsafe HTTP headers and non-finite timeouts/retries.

@@ -80,16 +80,22 @@ def test_python_sdk_against_main_control_plane(tmp_path: Path) -> None:
                     "SDK Founder",
                 )
                 assert setup.data["profile"]["is_founder"] is True
-                assert "roles.manage" in (await control.capabilities()).data["permission_catalog"]
+                capabilities = (await control.capabilities()).data
+                assert "roles.manage" in capabilities["permission_catalog"]
+                assert capabilities["call_client_revision"] == 2
                 area = await control.create_area({"project": "Notes", "name": "SDK project area", "visibility": "open"})
                 assert (await control.post_message(area.data["id"], "Control-plane integration is online")).status_code == 201
-                source = tmp_path / "real-upload.txt"
-                source.write_text("real app attachment", encoding="utf-8")
+                source = tmp_path / "Çağrı dosyası.txt"
+                source.write_text("Unicode içerik: Azərbaycan — Türkiye", encoding="utf-8")
                 uploaded = await control.upload_attachment(area.data["id"], source)
                 assert (await control.attachments(area.data["id"])).data["attachments"][0]["id"] == uploaded.data["id"]
                 target = tmp_path / "real-download.txt"
                 await control.download_attachment(uploaded.data["id"], target)
-                assert target.read_text(encoding="utf-8") == "real app attachment"
+                assert target.read_text(encoding="utf-8") == "Unicode içerik: Azərbaycan — Türkiye"
+                call = await control.start_call(area.data["id"], mode="audio")
+                ticket = await control.call_ticket(call.data["id"])
+                url = control.call_client_url(ticket.data["call_client_path"], ticket.data["ticket"])
+                assert "#ticket=" in url and "?ticket=" not in url
                 await control.logout()
                 assert not control.has_session
 

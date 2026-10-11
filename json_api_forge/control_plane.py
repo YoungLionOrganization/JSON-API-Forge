@@ -17,7 +17,7 @@ from .errors import ForgeHTTPError, ForgeSessionError
 from .models import ForgeResponse, JsonObject
 
 _PREFIX = "__forge/editor/v1"
-_USER_AGENT = "json-api-forge-control-plane/0.5.1"
+_USER_AGENT = "json-api-forge-control-plane/0.5.2"
 _DEFAULT_ATTACHMENT_LIMIT = 25 * 1024 * 1024
 _SESSION_TOKEN = re.compile(r"jfe_session_[A-Za-z0-9_-]{40,100}\Z")
 _INVITATION_TOKEN = re.compile(r"jfi_[A-Za-z0-9_-]{40,80}\Z")
@@ -251,7 +251,7 @@ class _ControlPlaneBase:
 
 
 class EditorControlPlaneClient(_ControlPlaneBase):
-    """Synchronous account and team client for the v0.5.1 Editor control plane.
+    """Synchronous account and team client for the v0.5.2 Editor control plane.
 
     Sessions are kept in a zeroable in-memory buffer, never persisted by this client, and
     removed from returned authentication payloads to reduce accidental logging.
@@ -515,7 +515,7 @@ class EditorControlPlaneClient(_ControlPlaneBase):
 
 
 class AsyncEditorControlPlaneClient(_ControlPlaneBase):
-    """Asynchronous account and team client for the v0.5.1 Editor control plane."""
+    """Asynchronous account and team client for the v0.5.2 Editor control plane."""
 
     def __init__(
         self,

@@ -1,11 +1,11 @@
-# JSON API Forge Python SDK v0.5.1
+# JSON API Forge Python SDK v0.5.2
 
-**Release candidate date:** 25 August 2026
+**Release candidate date:** 11 October 2026
 
 **Status:** Alpha
 **Distribution:** universal pure-Python wheel and source distribution
 
-v0.5.1 introduces typed synchronous/asynchronous Forge clients, bounded retry and pagination behavior, multi-endpoint clusters, optional YoungLion/DDM adapters and dedicated Editor control-plane clients.
+v0.5.2 adds lazy sync/async cursor traversal, resumable pagination, malformed-page/cycle detection and atomic heterogeneous batch creation. It preserves the existing CRUD, cluster and control-plane APIs.
 
 The control-plane layer supports profiles, roles, scoped projects/documents/databases, project spaces, messages, notes, attachments, calls and audit. This release also tightens exact token validation, same-origin call handoff, symlink-safe bounded attachment snapshots and durable atomic downloads.
 
