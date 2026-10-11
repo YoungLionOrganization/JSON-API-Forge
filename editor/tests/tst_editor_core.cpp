@@ -10,6 +10,7 @@
 #include "TemplateManager.hpp"
 
 #include <QCoreApplication>
+#include <QComboBox>
 #include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
@@ -24,6 +25,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMouseEvent>
+#include <QLabel>
+#include <QProcess>
+#include <QPushButton>
+#include <QScopeGuard>
 #include <QScrollBar>
 #include <QSettings>
 #include <QSharedPointer>
@@ -70,6 +75,8 @@ private slots:
     void graphCycleRollback();
     void graphCompilerRejectsDesignOnlyNodes();
     void pythonSdkSnippetPolicy();
+    void pythonSdkFailedStartAllowsRetry();
+    void pythonSdkInstallPackageIdentity();
     void forgePluginCatalogPolicy();
     void embeddedProjectTemplates();
 };
@@ -1122,6 +1129,55 @@ void EditorCoreTests::graphCompilerRejectsDesignOnlyNodes()
     QVERIFY(error.contains(QStringLiteral("not silently omitted")));
 }
 
+void EditorCoreTests::pythonSdkInstallPackageIdentity()
+{
+    PythonSdkPanel panel;
+    auto *mode = panel.findChild<QComboBox *>();
+    auto *install = panel.findChild<QLabel *>(QStringLiteral("sdkInstallCard"));
+    QVERIFY(mode != nullptr && install != nullptr);
+    for (int index = 0; index < mode->count(); ++index) {
+        mode->setCurrentIndex(index);
+        const auto extra = mode->currentData().toString();
+        if (extra == QStringLiteral("younglion") || extra == QStringLiteral("ddm")) {
+            QCOMPARE(install->text(), QStringLiteral("Install:  pip install \"json-api-forge-client[%1]\"").arg(extra));
+        } else {
+            QCOMPARE(install->text(), QStringLiteral("Install:  pip install json-api-forge-client"));
+        }
+    }
+}
+
+void EditorCoreTests::pythonSdkFailedStartAllowsRetry()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+#ifdef Q_OS_WIN
+    const auto name = QStringLiteral("python3.exe");
+#else
+    const auto name = QStringLiteral("python3");
+#endif
+    QFile invalidInterpreter(directory.filePath(name));
+    QVERIFY(invalidInterpreter.open(QIODevice::WriteOnly));
+    invalidInterpreter.write("This is not an executable interpreter.\n");
+    invalidInterpreter.close();
+    QVERIFY(invalidInterpreter.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    const auto previousPath = qgetenv("PATH");
+    const auto restorePath = qScopeGuard([previousPath] { qputenv("PATH", previousPath); });
+    qputenv("PATH", directory.path().toLocal8Bit());
+    PythonSdkPanel panel;
+    QPushButton *check = nullptr;
+    for (auto *button : panel.findChildren<QPushButton *>()) {
+        if (button->text() == QStringLiteral("Check installed SDK")) { check = button; }
+    }
+    QVERIFY(check != nullptr);
+    QSignalSpy messages(&panel, &PythonSdkPanel::statusMessage);
+    check->click();
+    QVERIFY(waitUntil([&] { return messages.count() == 1; }));
+    QVERIFY(messages.at(0).at(0).toString().contains(QStringLiteral("could not start")));
+    check->click();
+    QVERIFY(waitUntil([&] { return messages.count() == 2; }));
+    QVERIFY(messages.at(1).at(0).toString().contains(QStringLiteral("could not start")));
+}
+
 void EditorCoreTests::pythonSdkSnippetPolicy()
 {
     const PythonSdkSettings sync{QStringLiteral("sync"), QStringLiteral("https://forge.example.com"), QString(),
@@ -1140,6 +1196,19 @@ void EditorCoreTests::pythonSdkSnippetPolicy()
     cluster.clusterEndpoints = QStringLiteral("https://eu.example.com,https://us.example.com");
     const auto clusterCode = PythonSdkPanel::generatedSnippet(cluster, &error);
     QVERIFY2(clusterCode.contains(QStringLiteral("RoutingStrategy.RENDEZVOUS")), qPrintable(error));
+    for (const auto &mode : {QStringLiteral("sync"), QStringLiteral("async"), QStringLiteral("ddm"), QStringLiteral("younglion")}) {
+        auto local = sync;
+        local.mode = mode;
+        local.endpoint = QStringLiteral("http://127.0.0.1:8000");
+        const auto localCode = PythonSdkPanel::generatedSnippet(local, &error);
+        QVERIFY2(localCode.contains(QStringLiteral("allow_insecure_http=True")), qPrintable(error));
+        local.endpoint = QStringLiteral("http://remote.example.com");
+        QVERIFY(PythonSdkPanel::generatedSnippet(local, &error).isEmpty());
+    }
+    cluster.clusterEndpoints = QStringLiteral("http://localhost:8000,https://remote.example.com");
+    const auto mixedCode = PythonSdkPanel::generatedSnippet(cluster, &error);
+    QVERIFY2(!mixedCode.isEmpty(), qPrintable(error));
+    QCOMPARE(mixedCode.count(QStringLiteral("allow_insecure_http=True")), 1);
 }
 
 void EditorCoreTests::forgePluginCatalogPolicy()

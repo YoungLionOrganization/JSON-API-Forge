@@ -1,5 +1,12 @@
 # Editor changelog
 
+## Unreleased maintenance
+
+- Show Python interpreter startup errors immediately and allow subsequent SDK checks instead of remaining stuck in the running state.
+- Generate the explicit loopback HTTP opt-in for local Python SDK integrations and health checks while retaining HTTPS requirements for remote endpoints.
+- Correct the install command to use the independent `json-api-forge-client` package, including YoungLion/DDM extras.
+- Keep these changes separate from the frozen v0.5.2 publication candidate.
+
 ## [0.5.2] — 2026-10-04
 
 - Added an interruptible sidebar animation that resizes the document workspace along with navigation.
