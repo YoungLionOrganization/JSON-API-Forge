@@ -3,6 +3,7 @@ name: Example applications
 on:
   push:
     branches: [exampleApps]
+    tags: ["exampleApps-v0.5.*"]
   pull_request:
     branches: [exampleApps]
   workflow_dispatch:
@@ -31,6 +32,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           import pathlib
           import re
           import subprocess
@@ -54,8 +56,10 @@ jobs:
               payload = json.loads((project / "app.json").read_text(encoding="utf-8"))
               if not payload.get("slug") or not (project / "config").is_dir():
                   raise SystemExit(f"incomplete example: {project.name}")
-          if (root / "VERSION").read_text(encoding="utf-8").strip() != "0.5.1":
-              raise SystemExit("VERSION must be 0.5.1")
+          if (root / "VERSION").read_text(encoding="utf-8").strip() != "0.5.2":
+              raise SystemExit("VERSION must be 0.5.2")
+          if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != "exampleApps-v0.5.2":
+              raise SystemExit("tag does not match the examples version")
           links = [
               line.split(maxsplit=3)[-1]
               for line in subprocess.check_output(["git", "ls-files", "-s"], text=True).splitlines()
@@ -115,18 +119,25 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: c1fa3cd6aaa6010fa49301638463dbfc789deac2 # reviewed server v0.5.2
           path: server-source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: d6bb658ab2b7fa603bc3c6a788684dc6f0f58c29 # reviewed SDK v0.5.2
+          path: sdk-source
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: server-source/pyproject.toml
+          cache-dependency-path: |
+            server-source/pyproject.toml
+            sdk-source/pyproject.toml
       - name: Install the independently owned server runtime
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e "./server-source[dev]"
+          python -m pip install -e "./server-source[dev]" -e ./sdk-source
           python -m pip check
       - name: Lint example tooling
         run: |
@@ -141,7 +152,7 @@ jobs:
           forge init
           forge validate
           forge doctor
-      - name: Exercise schema, CRUD, RPC, idempotency, realtime and media
+      - name: Exercise SDK, cursor feeds, atomic batches, CRUD, RPC and media
         working-directory: server-source
         run: python ../examples/scripts/smoke-example-apps.py
 
@@ -160,6 +171,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+      - name: Test release tools on the target filesystem
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Test Bash installer
         if: runner.os == 'Linux'
         shell: bash
@@ -193,13 +209,14 @@ jobs:
       - name: Build and checksum release asset
         run: |
           export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
-          python scripts/build-example-bundle.py JSON-API-Forge-exampleApps-v0.5.1.zip
-          sha256sum JSON-API-Forge-exampleApps-v0.5.1.zip > JSON-API-Forge-exampleApps-v0.5.1.zip.sha256
+          python scripts/build-example-bundle.py JSON-API-Forge-exampleApps-v0.5.2.zip
+          sha256sum JSON-API-Forge-exampleApps-v0.5.2.zip > JSON-API-Forge-exampleApps-v0.5.2.zip.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: JSON-API-Forge-exampleApps-v0.5.1
+          name: JSON-API-Forge-exampleApps-v0.5.2
           path: |
-            JSON-API-Forge-exampleApps-v0.5.1.zip
-            JSON-API-Forge-exampleApps-v0.5.1.zip.sha256
+            JSON-API-Forge-exampleApps-v0.5.2.zip
+            JSON-API-Forge-exampleApps-v0.5.2.zip.sha256
           if-no-files-found: error
           retention-days: 30
+          overwrite: true

@@ -106,6 +106,8 @@
         "update": "projects.work_items.update",
         "delete": "projects.work_items.delete"
       },
+      "batch_enabled": true,
+      "max_batch_size": 100,
       "search_fields": [
         "external_id",
         "name"

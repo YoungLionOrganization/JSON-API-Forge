@@ -34,6 +34,12 @@ The catalog contains 25 named projects. The original five demonstrate specialize
 
 Except for the explicitly public `PublicCatalog`, each project uses a generated `<SLUG>_BOOTSTRAP_ADMIN_KEY`. Run `forge init`; do not hand-author shared credentials.
 
+## New in v0.5.2
+
+TaskBoard adds a read-only `tasks-feed` cursor view ordered by nullable due date, plus atomic batches of up to 100 tasks. The original sortable task list is retained. The included [async SDK recipe](scripts/taskboard_client.py) browses on demand with an item limit and overall deadline; seeding is explicit.
+
+The 20 generated domain apps now support primary-record batch imports, preserving defaults independently per row and rolling back the entire transaction on an invalid or conflicting record. CI exercises every app's batch success, defaults and rollback, along with TaskBoard's scoped credentials and async SDK flow. Server and SDK contract inputs are pinned to reviewed v0.5.2 commits.
+
 ## Run examples with the independently owned runtime
 
 ```bash
@@ -66,7 +72,7 @@ The generated applications and release ZIP are reproducible from the examples ch
 
 ```bash
 python scripts/generate_example_catalog.py --check
-python scripts/build-example-bundle.py JSON-API-Forge-exampleApps-v0.5.1.zip
+python scripts/build-example-bundle.py JSON-API-Forge-exampleApps-v0.5.2.zip
 ```
 
 `smoke-example-apps.py` is intentionally executed by CI from a separate `main` checkout after the examples have been copied into it; it is not a standalone server.

@@ -106,6 +106,8 @@
         "update": "clinic.care_cases.update",
         "delete": "clinic.care_cases.delete"
       },
+      "batch_enabled": true,
+      "max_batch_size": 100,
       "search_fields": [
         "external_id",
         "name"

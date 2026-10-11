@@ -30,6 +30,7 @@ class ReleaseToolsTests(unittest.TestCase):
             "EXAMPLE_APPS.md",
             "scripts/install-example.sh",
             "scripts/install-example.ps1",
+            "scripts/taskboard_client.py",
         ]:
             (self.root / relative).write_text("{}\n", encoding="utf-8")
         self.context = patch.object(bundle, "ROOT", self.root)
@@ -63,14 +64,30 @@ class ReleaseToolsTests(unittest.TestCase):
 
     def test_symlinks_collisions_and_size_are_rejected(self):
         link = self.root / "app/Test/link"
-        link.symlink_to(self.root / "EXAMPLE_APPS.md")
-        with self.assertRaisesRegex(RuntimeError, "symlinks"):
-            bundle.build(self.root / "bad.zip")
-        link.unlink()
+        try:
+            link.symlink_to(self.root / "EXAMPLE_APPS.md")
+        except OSError:
+            if os.name != "nt":
+                raise
+        else:
+            with self.assertRaisesRegex(RuntimeError, "symlinks"):
+                bundle.build(self.root / "bad.zip")
+            link.unlink()
         (self.root / "app/Test/APP.json").write_text("{}", encoding="utf-8")
-        with self.assertRaisesRegex(RuntimeError, "colliding"):
+        if not (self.root / "app/Test/APP.json").samefile(
+            self.root / "app/Test/app.json"
+        ):
+            with self.assertRaisesRegex(RuntimeError, "colliding"):
+                bundle.build(self.root / "bad.zip")
+            (self.root / "app/Test/APP.json").unlink()
+        # Exercise a duplicate source on both case-sensitive and insensitive FS.
+        with (
+            patch.object(
+                bundle, "BUNDLE_DOCUMENTS", (*bundle.BUNDLE_DOCUMENTS, "LICENSE")
+            ),
+            self.assertRaisesRegex(RuntimeError, "colliding"),
+        ):
             bundle.build(self.root / "bad.zip")
-        (self.root / "app/Test/APP.json").unlink()
         with (
             patch.object(bundle, "MAX_FILE_BYTES", 1),
             self.assertRaisesRegex(RuntimeError, "file exceeds"),
@@ -87,6 +104,21 @@ class ReleaseToolsTests(unittest.TestCase):
                 bundle.build(self.root / "epoch.zip")
             with zipfile.ZipFile(self.root / "epoch.zip") as archive:
                 self.assertEqual(archive.infolist()[0].date_time[0], year)
+
+    def test_changed_source_preserves_existing_output(self):
+        output = self.root / "existing.zip"
+        output.write_bytes(b"previous verified archive")
+        sources = bundle._sources()
+        (self.root / "app/Test/app.json").write_text(
+            "changed contents\n", encoding="utf-8"
+        )
+        with (
+            patch.object(bundle, "_sources", return_value=sources),
+            self.assertRaisesRegex(RuntimeError, "source changed"),
+        ):
+            bundle.build(output)
+        self.assertEqual(output.read_bytes(), b"previous verified archive")
+        self.assertFalse(list(self.root.glob("*.tmp")))
 
 
 if __name__ == "__main__":

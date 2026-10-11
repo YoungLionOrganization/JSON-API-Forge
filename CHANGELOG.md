@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2 — 2026-10-11
+
+- Add TaskBoard atomic batches and a permission-preserving read-only cursor feed with nullable due dates.
+- Add a bounded asynchronous SDK recipe, included in the deterministic delivery bundle.
+- Enable bounded primary-record batches in the 20 generated domain applications.
+- Verify heterogeneous defaults, batch rollback, cursor completeness and SDK cancellation against pinned v0.5.2 sources.
+- Fix Windows source identity checks in the ZIP builder and run delivery tests on both Windows and Linux.
+- Refresh compatibility guides, catalog generation and v0.5.2 workflow assets.
+
 ## 0.5.1 — 2026-09-06
 
 - Advance the independent examples distribution, installers, generated catalog and workflow assets to v0.5.1.

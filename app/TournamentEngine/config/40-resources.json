@@ -106,6 +106,8 @@
         "update": "tournaments.matches.update",
         "delete": "tournaments.matches.delete"
       },
+      "batch_enabled": true,
+      "max_batch_size": 100,
       "search_fields": [
         "external_id",
         "name"

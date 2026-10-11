@@ -3,17 +3,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
+import httpx
 from dotenv import dotenv_values
 from fastapi.testclient import TestClient
 from framework.factory import create_app
 from generate_example_catalog import EXAMPLES
+from json_api_forge import AsyncForgeClient
 from jsonschema import Draft202012Validator
+from taskboard_client import fetch_tasks, seed_tasks
 
 
 def _validate_editor_schemas() -> None:
@@ -101,6 +105,40 @@ def _exercise_generated_app(
         item["id"] == item_id for item in listed.json()["items"]
     ), listed.text
 
+    batch_rows = []
+    for index in range(2):
+        row = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"status", "amount", "priority", "metadata"}
+        }
+        row["external_id"] = f"ci-batch-{slug}-{nonce}-{index}"
+        if index:
+            row.update(priority=9, metadata={"preserved": True})
+        batch_rows.append(row)
+    imported = client.post(f"{route}/_batch", headers=auth, json=batch_rows)
+    assert imported.status_code == 200 and imported.json()["created"] == 2, (
+        imported.text
+    )
+    batch_list = client.get(
+        route, params={"q": f"ci-batch-{slug}-{nonce}", "sort": "id"}, headers=auth
+    ).json()["items"]
+    assert len(batch_list) == 2
+    assert batch_list[0]["priority"] == 0 and batch_list[0]["amount"] == 0
+    assert batch_list[0]["status"] == statuses[0]
+    assert (
+        batch_list[1]["priority"] == 9
+        and batch_list[1]["metadata"]["preserved"] is True
+    )
+    conflict = {**batch_rows[0], "external_id": f"ci-rollback-{slug}-{nonce}"}
+    rejected = client.post(
+        f"{route}/_batch", headers=auth, json=[conflict, batch_rows[1]]
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert not client.get(
+        route, params={"q": conflict["external_id"]}, headers=auth
+    ).json()["items"]
+
     dashboard = client.get(f"{prefix}/rpc/{domain}.dashboard", headers=auth)
     assert dashboard.status_code == 200 and "status_summary" in dashboard.json(), (
         dashboard.text
@@ -162,6 +200,105 @@ def main() -> None:
         assert (
             tasks.status_code == 200
             and tasks.json()["items"][0]["title"] == "Ship hardened branch"
+        )
+
+        task_user = client.post(
+            "/api/task-board/v1/admin/api-keys",
+            headers=task_auth,
+            json={"name": "scoped-task-user", "roles": ["task_user"]},
+        )
+        assert task_user.status_code == 200, task_user.text
+        scoped_auth = {"X-API-Key": task_user.json()["api_key"]}
+
+        async def exercise_sdk():
+            async def send(request: httpx.Request) -> httpx.Response:
+                response = await asyncio.to_thread(
+                    client.request,
+                    request.method,
+                    str(request.url),
+                    headers=dict(request.headers),
+                    content=request.content,
+                )
+                return httpx.Response(
+                    response.status_code,
+                    content=response.content,
+                    headers=dict(response.headers),
+                )
+
+            async with AsyncForgeClient(
+                "http://localhost",
+                api_key=scoped_auth["X-API-Key"],
+                allow_insecure_http=True,
+                transport=httpx.MockTransport(send),
+            ) as forge:
+                await seed_tasks(forge)
+                rows = await fetch_tasks(forge, status="todo", max_items=10)
+                assert len(rows) == 2 and rows[0]["due_at"] is None
+                assert rows[0]["priority"] == 0 and rows[1]["priority"] == 3
+                assert rows[1]["due_at"].startswith("2026-10-15")
+                all_rows = [
+                    row
+                    async for row in forge.iter_items(
+                        "task-board", "tasks-feed", pagination="cursor", page_size=1
+                    )
+                ]
+                assert len(all_rows) == 3 and len({row["id"] for row in all_rows}) == 3
+                assert len(await fetch_tasks(forge, max_items=1)) == 1
+                await forge.delete_item("task-board", "tasks", str(rows[0]["id"]))
+                assert len(await fetch_tasks(forge, status="todo")) == 1
+                offset_rows = [
+                    row
+                    async for row in forge.iter_items(
+                        "task-board", "tasks", page_size=1
+                    )
+                ]
+                assert len(offset_rows) == 2
+
+        asyncio.run(exercise_sdk())
+        assert (
+            client.post(
+                "/api/task-board/v1/admin/api-keys",
+                headers=scoped_auth,
+                json={"name": "forbidden"},
+            ).status_code
+            == 403
+        )
+        assert (
+            client.post(
+                "/api/task-board/v1/tasks-feed/_batch",
+                headers=scoped_auth,
+                json=[{"title": "denied"}],
+            ).status_code
+            == 405
+        )
+        invalid_batch = client.post(
+            "/api/task-board/v1/tasks/_batch",
+            headers=task_auth,
+            json=[
+                {"title": "must roll back"},
+                {"title": "invalid", "priority": 99},
+            ],
+        )
+        assert invalid_batch.status_code == 422, invalid_batch.text
+        assert not client.get(
+            "/api/task-board/v1/tasks",
+            params={"q": "must roll back"},
+            headers=task_auth,
+        ).json()["items"]
+        assert (
+            client.post(
+                "/api/task-board/v1/tasks-feed",
+                headers=task_auth,
+                json={"title": "denied"},
+            ).status_code
+            == 405
+        )
+        assert client.get("/api/task-board/v1/tasks-feed").status_code == 401
+        assert (
+            client.get(
+                "/api/task-board/v1/tasks-feed?sort=id", headers=task_auth
+            ).status_code
+            == 400
         )
 
         guild_auth = _admin(
@@ -244,7 +381,7 @@ def main() -> None:
             _exercise_generated_app(client, values, definition)
 
     print(
-        "OK: 25 example applications passed schema, CRUD, RPC, idempotency, realtime, media and public-data smoke tests"
+        "OK: 25 example applications passed schema, CRUD, atomic batches/rollback, nullable cursor feeds, async SDK, RPC, idempotency, realtime, media and public-data smoke tests"
     )
 
 

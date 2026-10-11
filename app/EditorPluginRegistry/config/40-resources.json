@@ -156,6 +156,8 @@
         "update": "editor.plugins.update",
         "delete": "editor.plugins.delete"
       },
+      "batch_enabled": true,
+      "max_batch_size": 100,
       "search_fields": [
         "external_id",
         "name"

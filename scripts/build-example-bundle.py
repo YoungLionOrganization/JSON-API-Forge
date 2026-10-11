@@ -71,6 +71,7 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
             ROOT / "EXAMPLE_APPS.md",
             ROOT / "scripts/install-example.sh",
             ROOT / "scripts/install-example.ps1",
+            ROOT / "scripts/taskboard_client.py",
         ]
     )
     if len(paths) > MAX_FILES:
@@ -152,7 +153,10 @@ def build(output: Path) -> None:
                             value.st_ino,
                             value.st_size,
                             value.st_mtime_ns,
-                            value.st_ctime_ns,
+                            # Windows ctime can change when opening a file even if
+                            # its contents did not change. File ID, size and mtime
+                            # remain comparable between lstat and fstat there.
+                            value.st_ctime_ns if os.name != "nt" else None,
                         )
 
                     if not stat.S_ISREG(before.st_mode) or identity(before) != identity(

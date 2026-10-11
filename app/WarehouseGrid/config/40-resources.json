@@ -106,6 +106,8 @@
         "update": "warehouse.inventory_batches.update",
         "delete": "warehouse.inventory_batches.delete"
       },
+      "batch_enabled": true,
+      "max_batch_size": 100,
       "search_fields": [
         "external_id",
         "name"

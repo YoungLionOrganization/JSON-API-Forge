@@ -359,6 +359,8 @@ def _primary_resource(definition: dict[str, Any]) -> dict[str, Any]:
     )
     resource.update(
         {
+            "batch_enabled": True,
+            "max_batch_size": 100,
             "search_fields": ["external_id", "name"],
             "soft_delete_field": "deleted_at",
             "create_schema": {
@@ -817,7 +819,7 @@ def _documents(definition: dict[str, Any]) -> dict[str, str]:
     )
     readme = f"""# {definition["name"]}
 
-[![Forge 0.5.1](https://img.shields.io/badge/Forge-0.5.1-D4A017)](../../VERSION)
+[![Forge 0.5.2](https://img.shields.io/badge/Forge-0.5.2-D4A017)](../../VERSION)
 [![Example checks](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/example-apps.yml/badge.svg?branch=exampleApps)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/example-apps.yml?query=branch%3AexampleApps)
 [![Source available](https://img.shields.io/badge/license-source--available-555555)](../../LICENSE)
 
@@ -828,6 +830,7 @@ def _documents(definition: dict[str, Any]) -> dict[str, str]:
 | Area | Included behavior |
 |---|---|
 | Main records | `{domain}/{entity}` CRUD with bounded inputs, soft deletion and ownership policy |
+| Atomic imports | Up to 100 primary records per transaction, with per-row defaults |
 | Supporting records | Policy, assignment and audit resources |
 | Workflow | Three transactional/analytics RPCs; states: {", ".join(f"`{status}`" for status in definition["statuses"])} |
 | Access | Scoped `operator` and read-only `auditor` roles, plus administration |
@@ -836,7 +839,7 @@ def _documents(definition: dict[str, Any]) -> dict[str, str]:
 {plugin_note}
 ## Install and run
 
-Install the [main runtime](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/main/INSTALL.md) at v0.5.1. From the exampleApps checkout, copy this project into that server:
+Install the [main runtime](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/main/INSTALL.md) at v0.5.2. From the exampleApps checkout, copy this project into that server:
 
 ```bash
 bash scripts/install-example.sh {definition["directory"]} /path/to/JSON-API-Forge-main/app
@@ -854,6 +857,8 @@ forge dev
 Open `http://127.0.0.1:8000/api/{slug}/v1/_docs`. Use the bootstrap variable declared in `config/20-security.json` to provision appropriately scoped credentials; do not publish the generated `.env` or use an administrator key in a browser. Transactional operations that require idempotency must receive an `Idempotency-Key` unique to the logical command.
 
 ## Explore and adapt
+
+Use `POST /api/{slug}/v1/{domain}/{entity}/_batch` for up to 100 records in one transaction. The request body is an array of create payloads; the whole batch rolls back on a validation or constraint failure. This endpoint does not implement idempotent replay, so reconcile application identifiers before resubmitting after a network failure.
 
 Read `app.json` for the API prefix, `config/40-resources.json` for allowed CRUD fields/actions, `config/50-operations.json` for SQL/RPC contracts, and `config/60-events.json` for channel permissions. Keep changes to JSON configuration validated with the main runtime.
 

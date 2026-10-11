@@ -106,6 +106,8 @@
         "update": "civic.service_requests.update",
         "delete": "civic.service_requests.delete"
       },
+      "batch_enabled": true,
+      "max_batch_size": 100,
       "search_fields": [
         "external_id",
         "name"

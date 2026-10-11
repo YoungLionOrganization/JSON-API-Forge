@@ -1,6 +1,6 @@
 # GuildLedger
 
-[![Forge 0.5.1](https://img.shields.io/badge/Forge-0.5.1-D4A017)](../../VERSION)
+[![Forge 0.5.2](https://img.shields.io/badge/Forge-0.5.2-D4A017)](../../VERSION)
 [![Example checks](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/example-apps.yml/badge.svg?branch=exampleApps)](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/example-apps.yml?query=branch%3AexampleApps)
 [![Source available](https://img.shields.io/badge/license-source--available-555555)](../../LICENSE)
 
@@ -8,7 +8,7 @@ Community economy reference with account CRUD, immutable ledger reads, cached ba
 
 ## Install and run
 
-Install the [main runtime](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/main/INSTALL.md) at v0.5.1. From the exampleApps checkout:
+Install the [main runtime](https://github.com/YoungLionOrganization/JSON-API-Forge/blob/main/INSTALL.md) at v0.5.2. From the exampleApps checkout:
 
 ```bash
 bash scripts/install-example.sh GuildLedger /path/to/JSON-API-Forge-main/app

@@ -6,6 +6,8 @@
       "table": "tasks",
       "path": "tasks",
       "auto_create": true,
+      "batch_enabled": true,
+      "max_batch_size": 100,
       "columns": {
         "id": {"type": "integer", "primary_key": true, "nullable": false},
         "title": {"type": "string", "nullable": false, "max_length": 160, "index": true},
@@ -29,6 +31,64 @@
         "create": "tasks.create",
         "update": "tasks.update",
         "delete": "tasks.delete"
+      },
+      "create_schema": {
+        "type": "object",
+        "required": ["title"],
+        "additionalProperties": false,
+        "properties": {
+          "title": {"type": "string", "minLength": 1, "maxLength": 160},
+          "description": {"type": ["string", "null"]},
+          "status": {"type": "string", "enum": ["todo", "doing", "blocked", "done"]},
+          "priority": {"type": "integer", "minimum": 0, "maximum": 5},
+          "due_at": {"type": ["string", "null"], "format": "date-time"},
+          "created_at": {"type": ["string", "null"], "format": "date-time"},
+          "updated_at": {"type": ["string", "null"], "format": "date-time"}
+        }
+      },
+      "update_schema": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": false,
+        "properties": {
+          "title": {"type": "string", "minLength": 1, "maxLength": 160},
+          "description": {"type": ["string", "null"]},
+          "status": {"type": "string", "enum": ["todo", "doing", "blocked", "done"]},
+          "priority": {"type": "integer", "minimum": 0, "maximum": 5},
+          "due_at": {"type": ["string", "null"], "format": "date-time"},
+          "updated_at": {"type": ["string", "null"], "format": "date-time"}
+        }
+      },
+      "cache": {"enabled": true, "list_ttl_seconds": 10, "read_ttl_seconds": 30}
+    },
+    {
+      "database": "primary",
+      "table": "tasks",
+      "path": "tasks-feed",
+      "auto_create": true,
+      "allowed_actions": ["list", "read"],
+      "pagination_mode": "cursor",
+      "cursor_field": "due_at",
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "title": {"type": "string", "nullable": false, "max_length": 160, "index": true},
+        "description": {"type": "text"},
+        "status": {"type": "string", "nullable": false, "default": "todo", "max_length": 24, "index": true},
+        "priority": {"type": "integer", "nullable": false, "default": 0, "index": true},
+        "due_at": {"type": "datetime", "index": true},
+        "created_at": {"type": "datetime", "index": true},
+        "updated_at": {"type": "datetime"},
+        "deleted_at": {"type": "datetime", "index": true}
+      },
+      "writable_fields": ["title", "description", "status", "priority", "due_at", "created_at", "updated_at"],
+      "allowed_filters": ["status", "priority", "due_at"],
+      "filter_operators": ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isnull"],
+      "search_fields": ["title", "description"],
+      "allowed_sort": [],
+      "soft_delete_field": "deleted_at",
+      "permissions": {
+        "list": "tasks.list",
+        "read": "tasks.read"
       },
       "create_schema": {
         "type": "object",

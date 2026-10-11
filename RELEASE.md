@@ -1,9 +1,11 @@
-# JSON API Forge exampleApps v0.5.1
+# JSON API Forge exampleApps v0.5.2
 
-**Release candidate date:** 25 August 2026
+**Release candidate date:** 11 October 2026
 **Status:** Alpha reference configurations
 
-This branch distributes 25 copy-ready v0.5.1 projects and their installation/generation tooling. It contains no Forge runtime; consumers copy selected projects into an independently obtained matching `main` checkout.
+This branch distributes 25 copy-ready v0.5.2 projects and their installation/generation tooling. It contains no Forge runtime; consumers copy selected projects into an independently obtained matching `main` checkout.
+
+v0.5.2 adds atomic imports in TaskBoard and the 20 generated domain apps, a nullable-date cursor feed, a bounded async SDK recipe and real-server rollback/permissions checks.
 
 The catalog spans task management, transactional ledgers, realtime support, media, public data and 20 substantial domain workflows. Configurations are synthetic examples, not professional advice or deployment-specific production policy.
 
