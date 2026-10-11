@@ -4,6 +4,7 @@
 
 - Never replay multipart file bodies across cluster endpoints, including PUT and keyed POST requests.
 - Cancel and drain sibling operations when an async bulk item is cancelled, so no owned operation continues after bulk returns.
+- Reject non-integer async concurrency values before consuming work; fractional semaphore counts could otherwise bypass the parallelism limit.
 - Keep these fixes separate from the frozen v0.5.2 publication candidate.
 
 ## 0.5.2 — 2026-10-11

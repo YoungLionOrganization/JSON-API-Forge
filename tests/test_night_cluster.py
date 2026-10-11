@@ -9,6 +9,18 @@ import pytest
 from json_api_forge import AsyncForgeClient, AsyncForgeCluster, ForgeClient, ForgeCluster, ForgeEndpoint, ForgeHTTPError
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("concurrency", [True, False, 1.5, float("nan"), float("inf"), "2", 0, 257])
+async def test_bulk_rejects_invalid_concurrency_before_consuming_work(concurrency):
+    def work():
+        raise AssertionError("Invalid concurrency must not consume or start work")
+        yield
+
+    async with AsyncForgeCluster([ForgeEndpoint("only", "https://forge.test")]) as cluster:
+        with pytest.raises(ValueError, match="concurrency"):
+            await cluster.bulk(work(), concurrency=concurrency)
+
+
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("method,idempotency_key", [("PUT", None), ("POST", "upload-once")])
 def test_cluster_never_replays_multipart_uploads(asynchronous, method, idempotency_key):

@@ -371,7 +371,7 @@ class AsyncForgeCluster:
         concurrency: int = 16,
         max_items: int = 10_000,
     ) -> list[BulkResult[T]]:
-        if not 1 <= concurrency <= 256:
+        if type(concurrency) is not int or not 1 <= concurrency <= 256:
             raise ValueError("concurrency must be between 1 and 256")
         bounded_operations = _bounded_values(operations, max_items)
         semaphore = asyncio.Semaphore(concurrency)
