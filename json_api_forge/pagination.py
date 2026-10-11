@@ -57,7 +57,10 @@ class Pagination:
             invalid("List response does not contain an items array")
         items = data["items"]
         limit = self.query()["limit"]
-        if len(items) > limit or any(not isinstance(item, dict) for item in items):
+        effective_limit = data.get("limit", limit)
+        if type(effective_limit) is not int or not 1 <= effective_limit <= limit:
+            invalid("List response contains an invalid effective limit")
+        if len(items) > effective_limit or any(not isinstance(item, dict) for item in items):
             invalid("List response contains too many items or a non-object item")
         done = self.yielded + len(items) >= self.max_items
         if self.mode == "cursor":
@@ -75,7 +78,7 @@ class Pagination:
             done = done or not more
         else:
             self.offset += len(items)
-            done = done or len(items) < limit
+            done = done or len(items) < effective_limit
         self.yielded += len(items)
         return items, done
 

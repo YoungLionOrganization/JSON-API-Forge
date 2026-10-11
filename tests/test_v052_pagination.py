@@ -194,3 +194,19 @@ def test_async_traversal_cancellation_propagates():
                 await task
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_server_page_size_cap_does_not_truncate_offset_results(asynchronous):
+    def handler(request):
+        offset = int(request.url.params["offset"])
+        limit = min(2, int(request.url.params["limit"]))
+        return httpx.Response(200, json={"items": [{"id": n} for n in range(offset, min(offset + limit, 5))], "limit": limit})
+
+    assert traverse(handler, asynchronous=asynchronous, page_size=100) == [{"id": n} for n in range(5)]
+
+
+@pytest.mark.parametrize("limit", [0, True, "1", 101])
+def test_invalid_effective_page_limit_fails(limit):
+    with pytest.raises(ForgeHTTPError, match="effective limit"):
+        traverse(lambda _: httpx.Response(200, json={"items": [], "limit": limit}))
