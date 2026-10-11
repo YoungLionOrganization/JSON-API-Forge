@@ -23,6 +23,25 @@ def fixture_version(path: Path, minor: int, patch: int):
     kernel.UpdateResourceW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
                                       ctypes.c_ushort, ctypes.c_void_p, ctypes.c_uint]
     kernel.EndUpdateResourceW.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+    kernel.LoadLibraryExW.argtypes = [ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_uint]
+    kernel.LoadLibraryExW.restype = ctypes.c_void_p
+    kernel.FreeLibrary.argtypes = [ctypes.c_void_p]
+    callback_type = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+                                      ctypes.c_void_p, ctypes.c_ushort, ctypes.c_ssize_t)
+    kernel.EnumResourceLanguagesW.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                             ctypes.c_void_p, callback_type, ctypes.c_ssize_t]
+    languages = []
+    def collect_language(_module, _kind, _name, language, _parameter):
+        languages.append(language)
+        return 1
+    module = kernel.LoadLibraryExW(str(path), None, 2)  # Data only; no executable code is run.
+    if not module:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if not kernel.EnumResourceLanguagesW(module, 16, 1, callback_type(collect_language), 0):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel.FreeLibrary(module)
     body = struct.pack('<13I', 0xFEEF04BD, 0x10000, minor, patch << 16,
                        minor, patch << 16, 0x3f, 0, 0x40004, 1, 0, 0, 0)
     key = 'VS_VERSION_INFO\0'.encode('utf-16-le')
@@ -32,7 +51,9 @@ def fixture_version(path: Path, minor: int, patch: int):
     handle = kernel.BeginUpdateResourceW(str(path), False)
     if not handle:
         raise ctypes.WinError(ctypes.get_last_error())
-    ok = kernel.UpdateResourceW(handle, 16, 1, 0x409, buffer, len(resource))
+    # Replace every existing language instead of adding a second version resource.
+    # MSVC and MinGW use different defaults; both must expose the fixture version.
+    ok = all(kernel.UpdateResourceW(handle, 16, 1, language, buffer, len(resource)) for language in languages)
     if not kernel.EndUpdateResourceW(handle, not ok) or not ok:
         raise ctypes.WinError(ctypes.get_last_error())
 
@@ -60,10 +81,19 @@ class WindowsInstallerTests(unittest.TestCase):
                 startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 startup.wShowWindow = 0
                 log = folder / (label + '.log')
-                result = subprocess.run([str(installer), '/VERYSILENT', '/SUPPRESSMSGBOXES',
+                process = subprocess.Popen([str(installer), '/VERYSILENT', '/SUPPRESSMSGBOXES',
                     '/NORESTART', '/CURRENTUSER', '/NOICONS', '/DIR=' + str(target),
-                    '/FORGEMODE=' + mode, '/LOG=' + str(log)], startupinfo=startup, timeout=180)
-                return result.returncode, log.read_text(encoding='utf-8-sig', errors='replace')
+                    '/FORGEMODE=' + mode, '/LOG=' + str(log)], startupinfo=startup)
+                try:
+                    code = process.wait(timeout=180)
+                except subprocess.TimeoutExpired:
+                    # Inno's loader owns a child process. Kill this test's entire tree
+                    # before temporary-directory cleanup, preserving the real failure.
+                    subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                        startupinfo=startup, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    process.wait(timeout=20)
+                    raise
+                return code, log.read_text(encoding='utf-8-sig', errors='replace')
 
             def verify_payload():
                 self.assertEqual(hashlib.sha256(executable.read_bytes()).hexdigest(), expected)
@@ -96,12 +126,17 @@ class WindowsInstallerTests(unittest.TestCase):
 
                 fixture_version(executable, 9, 0)
                 newer = executable.read_bytes()
-                code, _ = install('repair', 'downgrade')
+                code, log = install('repair', 'downgrade')
                 self.assertNotEqual(code, 0)
+                self.assertIn('Forge action: Refuse downgrade; installed version: 0.9.0.0', log)
                 self.assertEqual(executable.read_bytes(), newer)
                 self.assertTrue(sentinel.exists())
                 shutil.copyfile(payload / 'bin/JSON-API-Forge-Editor.exe', executable)
             finally:
+                diagnostics = ROOT / 'artifacts'
+                diagnostics.mkdir(exist_ok=True)
+                for log in folder.glob('*.log'):
+                    shutil.copyfile(log, diagnostics / ('installer-contract-' + log.name))
                 uninstall = target / 'unins000.exe'
                 if uninstall.is_file():
                     startup = subprocess.STARTUPINFO()

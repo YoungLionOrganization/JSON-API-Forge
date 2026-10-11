@@ -107,7 +107,8 @@ begin
   end;
   Result := True;
   if (ExistingVersion <> '') and (CompareVersions(ExistingVersion, '{#ProductVersion}') > 0) then begin
-    MsgBox('A newer JSON API Forge Editor (' + ExistingVersion + ') is already installed. Use its matching setup to repair it. This setup will not downgrade your installation.', mbError, MB_OK);
+    Log('Forge action: Refuse downgrade; installed version: ' + ExistingVersion);
+    SuppressibleMsgBox('A newer JSON API Forge Editor (' + ExistingVersion + ') is already installed. Use its matching setup to repair it. This setup will not downgrade your installation.', mbError, MB_OK, IDOK);
     Result := False;
   end;
 end;
@@ -156,7 +157,8 @@ begin
   if (Version = '') and (CompareText(WizardDirValue, ExistingDir) = 0) then Version := ExistingVersion;
   if Version = '' then begin ExistingDir := ''; ExistingVersion := ''; Exit; end;
   if CompareVersions(Version, '{#ProductVersion}') > 0 then begin
-    MsgBox('This folder contains a newer Editor (' + Version + '). Downgrading is not supported.', mbError, MB_OK);
+    Log('Forge action: Refuse downgrade; installed version: ' + Version);
+    SuppressibleMsgBox('This folder contains a newer Editor (' + Version + '). Downgrading is not supported.', mbError, MB_OK, IDOK);
     Result := False; Exit;
   end;
   ConfigureMaintenance(WizardDirValue, Version);
@@ -175,8 +177,10 @@ begin
   // Also protect silent deployments and /DIR overrides against downgrades.
   Version := ReadVersion(WizardDirValue);
   if (Version = '') and (CompareText(WizardDirValue, ExistingDir) = 0) then Version := ExistingVersion;
-  if (Version <> '') and (CompareVersions(Version, '{#ProductVersion}') > 0) then
+  if (Version <> '') and (CompareVersions(Version, '{#ProductVersion}') > 0) then begin
+    Log('Forge action: Refuse downgrade; installed version: ' + Version);
     Result := 'A newer Editor is installed in this folder. Nothing was changed.';
+  end;
   if (Result = '') and (Version <> '') then ConfigureMaintenance(WizardDirValue, Version);
 end;
 
