@@ -1,43 +1,59 @@
-name: Validate, draft or publish server release
+name: Validate or publish all components
 on:
   workflow_dispatch:
     inputs:
-      source_sha:
-        description: Exact 40-character main commit with successful CI, CodeQL and platform builds
+      component:
+        description: Publish all four prepared components, or choose one
         required: true
+        default: all
+        type: choice
+        options: [all, server, Editor, python-library, exampleApps]
+      source_sha:
+        description: Optional prepared SHA check; leave empty (all applies this only to Main)
+        required: false
+        default: ''
         type: string
       mode:
-        description: Release operation
+        description: validate checks all drafts; publish makes the selected releases public
         required: true
         default: validate
         type: choice
-        options: [validate, draft, publish]
+        options: [validate, publish]
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: server-release-v0.5.2
+  group: forge-component-release-v0.5.2
   cancel-in-progress: false
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
-      - name: Validate gates, provenance and complete checksums
+      - name: Validate all prepared sources, proofs, tags and remote assets
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_COMPONENT: ${{ inputs.component }}
           GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-        run: python scripts/publish_release.py --sha "$SOURCE_SHA" --mode validate
+        run: python scripts/publish_suite.py --component "$RELEASE_COMPONENT" --source-sha "$SOURCE_SHA" --mode validate
+      - name: Save validation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: component-publication-validation
+          path: publication-report.json
+          if-no-files-found: warn
+          overwrite: true
   release:
-    if: inputs.mode != 'validate'
+    if: inputs.mode == 'publish'
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -47,15 +63,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
-      - name: Revalidate and apply selected operation
+      - name: Revalidate every component and publish the prepared releases
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_COMPONENT: ${{ inputs.component }}
           RELEASE_MODE: ${{ inputs.mode }}
           GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-        run: python scripts/publish_release.py --sha "$SOURCE_SHA" --mode "$RELEASE_MODE"
+        run: python scripts/publish_suite.py --component "$RELEASE_COMPONENT" --source-sha "$SOURCE_SHA" --mode "$RELEASE_MODE"
+      - name: Save publication and recovery report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: component-publication-result
+          path: publication-report.json
+          if-no-files-found: warn
+          overwrite: true

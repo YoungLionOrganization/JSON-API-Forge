@@ -45,3 +45,6 @@ dist/
 .vscode/*.local.json
 .DS_Store
 Thumbs.db
+
+# Manual release validation/recovery output
+/publication-report.json

@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "version": "0.5.2",
+  "repository": "YoungLionOrganization/JSON-API-Forge",
+  "components": [
+    {
+      "name": "server",
+      "branch": "main",
+      "sha": "c1fa3cd6aaa6010fa49301638463dbfc789deac2",
+      "tag": "v0.5.2",
+      "release_id": 409842137,
+      "build_workflow": "server-builds.yml",
+      "required_workflows": {
+        "ci.yml": {
+          "run_id": 37371041192,
+          "run_attempt": 2
+        },
+        "codeql.yml": {
+          "run_id": 37371041270,
+          "run_attempt": 2
+        },
+        "server-builds.yml": {
+          "run_id": 37371041292,
+          "run_attempt": 2
+        }
+      },
+      "validation_run": 38163588344,
+      "assets": {
+        "JSON-API-Forge-v0.5.2-cpanel-passenger.tar.gz": "a48ccd5d2ef13dce8233e5d55db4bb01273892e8fb65ae0f5fa1b57c6f21b4be",
+        "JSON-API-Forge-v0.5.2-cpanel-passenger.tar.gz.sha256": "cb0e31aac7cf96ed6124093cd4feafcb5815fbc07d4c5aba26ef64649538a654",
+        "JSON-API-Forge-v0.5.2-linux-glibc-arm64.tar.gz": "4d5f4a1ebff6fb82bd60a91a1fd03df30e8dad2ddb39b03e91d2c205142c4cf5",
+        "JSON-API-Forge-v0.5.2-linux-glibc-arm64.tar.gz.sha256": "b60ecc436bf1ffcb56fea4f710db37d6a8cef76229be7e6f619e13f7bc6527e0",
+        "JSON-API-Forge-v0.5.2-linux-glibc-x64.tar.gz": "4baf2a5a281fc4e72e6152fa3c86d3d788f9d5a21f36625b68cec80a5e70992d",
+        "JSON-API-Forge-v0.5.2-linux-glibc-x64.tar.gz.sha256": "1d0d0671be0c7b61f2fdd2e5f0d957467dda2199bfb7b131a54f1c9b59fe5721",
+        "JSON-API-Forge-v0.5.2-linux-musl-arm64.tar.gz": "e4a727a6c405047a89b303320b65ba046fc4cd7ec2046bbeb8a6b88e49678634",
+        "JSON-API-Forge-v0.5.2-linux-musl-arm64.tar.gz.sha256": "bd8e77977397f60d455e760f9c873fb6edd3757c14f80e5d9edbc93d4c4fe746",
+        "JSON-API-Forge-v0.5.2-linux-musl-x64.tar.gz": "0a9c892785883fa8d2dd0a8debdec8e377ea3adac61a2c3cfc43e2cdee79f88a",
+        "JSON-API-Forge-v0.5.2-linux-musl-x64.tar.gz.sha256": "6da0b0a74bf15bc46c72305eec488b49328a10717833a6d6c9d762b388b87d6b",
+        "JSON-API-Forge-v0.5.2-macos-arm64.tar.gz": "997808b64deadc7af0394e976767a454bdab2cb9d4e52726bb7bdbf9e907b115",
+        "JSON-API-Forge-v0.5.2-macos-arm64.tar.gz.sha256": "f569746f55fc25f0e39b287349bd3593fc7e15a077462c16809706d8c60439b2",
+        "JSON-API-Forge-v0.5.2-macos-x64.tar.gz": "8808a97ad6b305fd325a7a8003a4424192059165fd0069c29f640aef7cdda468",
+        "JSON-API-Forge-v0.5.2-macos-x64.tar.gz.sha256": "38c3852cd252ea441cdd47866a1b9fc14e5a4b6314e428edb91a02449e15d784",
+        "JSON-API-Forge-v0.5.2-oci-arm64.tar": "77575b1a99163043fdb7d104bfa5624cbc6b1c6a8965c686f807a0c9ec40307b",
+        "JSON-API-Forge-v0.5.2-oci-arm64.tar.sha256": "d3c97e90f2170a15b5ff5c7c1b57addda69a91465a8fb8303a364e509615ef7e",
+        "JSON-API-Forge-v0.5.2-oci-x64.tar": "648a04de8212ba96a30383995636b90792b7e0a3f57dc45e62fcc63554a5890c",
+        "JSON-API-Forge-v0.5.2-oci-x64.tar.sha256": "a24ac015244c745f8c2c6d53f2449e9490a6d85594433ccc73de0452c8768e13",
+        "JSON-API-Forge-v0.5.2-windows-x64.zip": "b6ed7c01b9235f6e43d2c843df1fe5f01b3299bb8a8a45fc767556f667b4860b",
+        "JSON-API-Forge-v0.5.2-windows-x64.zip.sha256": "897f7878b1d6128cf995aa65cfc942759a79f6e33ea99cd2f95813d720c12b46",
+        "json_api_forge-0.5.2-py3-none-any.whl": "54f6f82ff95484b43693aab509b30baf5a204d642e91c377f44c6c70a924a44c",
+        "json_api_forge-0.5.2-py3-none-any.whl.sha256": "b4b7ab13dd9ddb0e7cfd419bbc77c23303fc9b9596ad865f4fd16d17afb48904",
+        "json_api_forge-0.5.2.tar.gz": "1b42d19c71d3d3a4ee53572a12db1123eb1d8a1191437fe10c8b2a6813590877",
+        "json_api_forge-0.5.2.tar.gz.sha256": "e7e7cb736c7e29cda5c69587dbc3217ba7f6d5a8f007e3c9420881d46181322d",
+        "release-build.json": "be9f82b18492c177cded5b8b9fefc945e15eaba7b9faa37c859fab6c575635d1"
+      }
+    },
+    {
+      "name": "Editor",
+      "branch": "Editor",
+      "sha": "09416632bfe43a5b07300cc667929c09401c5a27",
+      "tag": "editor-v0.5.2",
+      "release_id": 409851994,
+      "build_workflow": "editor-build.yml",
+      "required_workflows": {
+        "editor-build.yml": {
+          "run_id": 38159918712,
+          "run_attempt": 1
+        },
+        "editor-codeql.yml": {
+          "run_id": 38159918694,
+          "run_attempt": 1
+        }
+      },
+      "validation_run": 38164944699,
+      "assets": {
+        "JSON-API-Forge-Editor-v0.5.2-linux-arm64-setup.run": "8acdc10b67125f2d45c20e7cc415be58c2973e31fdf4979605cfe9f3da354ace",
+        "JSON-API-Forge-Editor-v0.5.2-linux-arm64-setup.run.sha256": "b62d8ec28cf6d463d15f44ea633c3ff24a6304fa8c9e55b9dbd97577b716b077",
+        "JSON-API-Forge-Editor-v0.5.2-linux-arm64.zip": "89322ed92b60a0e58b44e25ffdb6be7f75864d3285ecb8269f71c07144400abd",
+        "JSON-API-Forge-Editor-v0.5.2-linux-arm64.zip.sha256": "62a7609b2099702b9565da1ae10d20bd6d0fa37895eafeccbaefc690976fb31b",
+        "JSON-API-Forge-Editor-v0.5.2-linux-x64-setup.run": "d085409a2f62066178910764c757d97ce6cd1b28632188a697faa6cb8947ab5d",
+        "JSON-API-Forge-Editor-v0.5.2-linux-x64-setup.run.sha256": "ebfccdc4e67972d588441727d9845369525f7b0e5e25a0909217ab7133cf5e61",
+        "JSON-API-Forge-Editor-v0.5.2-linux-x64.zip": "7accffc86ea2a6aafcd8cfc14f6c3d81c914ae43846b96e6c6761e1355d5416a",
+        "JSON-API-Forge-Editor-v0.5.2-linux-x64.zip.sha256": "df0e20c5a23f50944df45bf9214f31c52e325f05ea2bb6bf2b6509d97648018f",
+        "JSON-API-Forge-Editor-v0.5.2-macos-arm64-setup.dmg": "4d92119f748b5aa84f2db3ab4ae452d38bbe68aa0ddc97163f0c550a563aa769",
+        "JSON-API-Forge-Editor-v0.5.2-macos-arm64-setup.dmg.sha256": "2a2fb555a2ac27b3704a32b6ba20946ab862a64ff82251d358f30c242fac05e6",
+        "JSON-API-Forge-Editor-v0.5.2-macos-arm64.zip": "29020487ae0ae87141717855179f117191ce63863862685dde05075f95e5e75d",
+        "JSON-API-Forge-Editor-v0.5.2-macos-arm64.zip.sha256": "79820b7465a9067edfa499e4fae123897a5cacf732c352531c5ae71c86e2dff6",
+        "JSON-API-Forge-Editor-v0.5.2-macos-x64-setup.dmg": "7616c58384985fce923c6e2a4e575bd7fc98587c7702a9c7611526b28e6e6ead",
+        "JSON-API-Forge-Editor-v0.5.2-macos-x64-setup.dmg.sha256": "5f2263b99d1208a9ec3502b2cd1b28d4c058af9951c55344b2147a5229a0e056",
+        "JSON-API-Forge-Editor-v0.5.2-macos-x64.zip": "ea2a9daa4b394c3cb333a6366c3ed9205b0421485a0bd38f1b6dec69ef063bd3",
+        "JSON-API-Forge-Editor-v0.5.2-macos-x64.zip.sha256": "7256441ebcb2a618fe210d303600342dd45a87de64c6f288c45b04930111cfba",
+        "JSON-API-Forge-Editor-v0.5.2-windows-arm64-setup.exe": "6722750a13fbbd3ab4ded7481cafae95a5c76bc10ec268ecac3ae4f139c6dfd0",
+        "JSON-API-Forge-Editor-v0.5.2-windows-arm64-setup.exe.sha256": "c871a68942fdb04e2c0133cc2fb56d5a50bfb7ec40287d6a3039af3a48f49413",
+        "JSON-API-Forge-Editor-v0.5.2-windows-arm64.zip": "cc35d25e96d90027baf393fd1819a0befb15182e1e5ee634ebb363789bc24b89",
+        "JSON-API-Forge-Editor-v0.5.2-windows-arm64.zip.sha256": "c27ef4010506b0bf3aa31369a67af0f6db974403fe62ddd9dcbeea7df59af5dc",
+        "JSON-API-Forge-Editor-v0.5.2-windows-x64-setup.exe": "ef23a95395cec877f63236d50566f9ab713df27df9eaaa4e4e3ffa3e2286f977",
+        "JSON-API-Forge-Editor-v0.5.2-windows-x64-setup.exe.sha256": "c40af381ce4e265795b97cc3cb9040afbd1d0b5afbccd70ddff5680a908e2a47",
+        "JSON-API-Forge-Editor-v0.5.2-windows-x64.zip": "6f5714ea61d0d03ef567619a923d250d51fbcc2438e82628af76292fcaf53b50",
+        "JSON-API-Forge-Editor-v0.5.2-windows-x64.zip.sha256": "5f7cabe8d425d39217292e69cf16a4bd703e7549fc3bfde7376658f12cf9c136",
+        "SHA256SUMS": "3ccc11d72032e56d2078683826b941d3aad66fa8577bc58949451794d1435480",
+        "release-build.json": "01129f1cdef70c1eda55deef9bc4f6a788fe128b5150e16d2cd14c9389ebd293"
+      }
+    },
+    {
+      "name": "python-library",
+      "branch": "python-library",
+      "sha": "d0c85eeb8516d0a7ce8e7d2d2b1f7f5a6cf7c122",
+      "tag": "python-library-v0.5.2",
+      "release_id": 409841626,
+      "build_workflow": "python-library.yml",
+      "required_workflows": {
+        "python-library.yml": {
+          "run_id": 38162804859,
+          "run_attempt": 1
+        },
+        "codeql.yml": {
+          "run_id": 38162804875,
+          "run_attempt": 1
+        }
+      },
+      "validation_run": 38162804859,
+      "assets": {
+        "JSON-API-Forge-python-library-v0.5.2-source.zip": "2d9d48ae68708649e13f1b495a8ebc1bec71464aec2b158ea4c69584b0750eee",
+        "SHA256SUMS": "17b30dfa5178ab328103b56d4fbeeb914bf4dbd3b15b61b418ba17fbdd327593",
+        "json_api_forge_client-0.5.2-py3-none-any.whl": "cbe376ba98a18bc50c786dadc23d83bd8c4bd010a19b4788dd64337c64cd5b99",
+        "json_api_forge_client-0.5.2.tar.gz": "9efdbd369676d09a4b3b7ab9aa246f427252e1fd8c432d834fd87c601c731f2b",
+        "release-build.json": "305e0f0342cd0ea966859ea978886c637cd9a4b0af31d4e978a9c0531c10502e"
+      }
+    },
+    {
+      "name": "exampleApps",
+      "branch": "exampleApps",
+      "sha": "d52494ff176b8d8390f2a976be7477d97cd6a183",
+      "tag": "exampleApps-v0.5.2",
+      "release_id": 409842279,
+      "build_workflow": "example-apps.yml",
+      "required_workflows": {
+        "example-apps.yml": {
+          "run_id": 38162947811,
+          "run_attempt": 1
+        },
+        "codeql.yml": {
+          "run_id": 38162947815,
+          "run_attempt": 1
+        }
+      },
+      "validation_run": 38162947811,
+      "assets": {
+        "JSON-API-Forge-exampleApps-v0.5.2.zip": "deb2250124a62b2e22b6ad56838e65f1388188fbfd0746876de3d6be6c3813ff",
+        "JSON-API-Forge-exampleApps-v0.5.2.zip.sha256": "32fc80371b842dec51fe13f94c6992b34d53dbd27ea4c371be1c7ad9ab885c4a",
+        "release-build.json": "c9d38b9003dbed47cb7640883f59851db06f9beb94097e55edbb68c7ef3f43a5"
+      }
+    }
+  ]
+}

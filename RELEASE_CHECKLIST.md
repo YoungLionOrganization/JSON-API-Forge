@@ -38,9 +38,9 @@ This checklist is for the Project Owner and authorized maintainers of the canoni
 - [ ] Review compatibility changes and the local latency report; do not treat local timings as a production hosting guarantee.
 - [ ] Merge the reviewed v0.5.2 server tree to `main`.
 - [ ] Wait for the latest successful main-push CI, CodeQL and platform-build attempts on that exact SHA.
-- [ ] Run publisher `validate`, then `draft`, and inspect the draft notes/assets.
+- [ ] Inspect all four prepared drafts and run the combined publisher with `component: all`, `mode: validate`.
 - [ ] Let the publisher create the lightweight tag for that SHA; do not pre-create an annotated tag.
-- [ ] Select `publish` only after the release review described in `RELEASE.md`.
+- [ ] Select `component: all`, `mode: publish` after the review described in `PUBLISH.md`.
 
 ## Server publisher
 - [ ] `validate` succeeds for the exact reviewed main SHA and latest workflow attempts.
@@ -51,3 +51,10 @@ This checklist is for the Project Owner and authorized maintainers of the canoni
 ## Independent components
 
 Editor, Python SDK and example applications keep their own branch/version/test/release processes. Their checks are required when releasing those components, not proof of this server-only artifact. This publisher does not merge branches or modify their assets.
+
+## Combined publication
+
+- [ ] The reviewed component plan matches all four source commits, workflow attempts and remote draft asset hashes.
+- [ ] Controller CI and CodeQL pass on the workflow commit used for publication.
+- [ ] Copy/paste whitespace, preflight-before-write, tag/proof/digest tampering and partial publication recovery tests pass.
+- [ ] `all / validate` succeeds in Actions; source SHA input is optional.

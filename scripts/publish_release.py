@@ -24,6 +24,14 @@ def api(path, *, method="GET", data=None):
     return json.loads(result.stdout) if result.stdout.strip() else None
 
 
+def normalize_sha(value: str) -> str:
+    """Allow surrounding whitespace from clipboard input, retaining exact SHA validation."""
+    normalized = value.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", normalized):
+        raise ValueError("Source must be a 40-character commit SHA (spaces around it are allowed)")
+    return normalized
+
+
 def latest_success(runs: list[dict], sha: str) -> dict:
     eligible = [r for r in runs if r["head_sha"] == sha and r["head_branch"] == "main" and r["event"] == "push"]
     if not eligible:
@@ -46,7 +54,7 @@ def unpack(archive: Path, destination: Path):
 def verify_remote(release: dict, manifest: dict, *, allow_partial: bool = False):
     assets = {asset["name"]: asset for asset in release["assets"]}
     if len(assets) != len(release["assets"]) or set(assets) - set(manifest) or (not allow_partial and set(assets) != set(manifest)):
-        raise ValueError("Remote release assets differ from the verified server bundle")
+        raise ValueError("Remote release assets differ from the verified release bundle")
     for name in assets:
         expected = manifest[name]
         if assets[name].get("digest") != "sha256:" + expected:
@@ -78,8 +86,7 @@ def main():
     parser.add_argument("--sha", required=True)
     parser.add_argument("--mode", choices=["validate", "draft", "publish"], required=True)
     args = parser.parse_args()
-    if not re.fullmatch(r"[0-9a-f]{40}", args.sha):
-        raise ValueError("Source must be an immutable commit SHA")
+    args.sha = normalize_sha(args.sha)
     authorized = json.loads((ROOT / "release/authorized_publishers.json").read_text())
     if any(os.environ.get(key) not in authorized for key in ("GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR")):
         raise ValueError("Actor is not an authorized publisher")

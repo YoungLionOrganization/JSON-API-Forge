@@ -53,25 +53,21 @@ GitHub's Python matrix, live PostgreSQL/Redis/MongoDB, container, CodeQL and sta
 
 The build exports Linux glibc/musl, Windows, macOS, OCI, wheel/source and cPanel/Passenger packages listed in [`release/assets.json`](release/assets.json). Platform support and architecture coverage remain defined by the [hosting matrix](docs/43-Platform-and-Hosting-Matrix.md) and build matrix; Windows x64 compatibility is not a native Windows ARM64 package.
 
-## Validate → draft → publish
+## Validate → publish all components
 
-Open **Actions → Validate, draft or publish server release → Run workflow** on `main`. Keep the exact 40-character `source_sha` the same across the intended release steps.
+Open **Actions → Validate or publish all components → Run workflow** on `main`. Choose `component: all` and leave `source_sha` empty. `mode: validate` verifies all four prepared drafts; `mode: publish` publishes Main, Editor, Python SDK and example applications in the same workflow run. See [PUBLISH.md](PUBLISH.md) for the complete procedure.
 
-| Mode | Operation |
-|---|---|
-| `validate` | Read-only: verify latest exact-SHA workflow gates, download the existing all-platform artifact, check build identity, expected files, archive integrity and every SHA-256 companion. This is the default. |
-| `draft` | Revalidate, create the lightweight version tag pointing to the selected source commit if absent, then create/resume the private draft and upload verified assets by numeric release ID. |
-| `publish` | Revalidate the build, complete the draft if needed, verify remote asset names/digests and recheck workflow attempts, tag identity and draft status before making the release public. Review the draft first. |
+The reviewed [component plan](release/components-v0.5.2.json) pins each branch's source SHA, exact successful build/CodeQL attempts, release ID and complete asset hashes. The workflow downloads small hash-verified build proofs; it reuses the already verified draft assets. It checks every component before making a public transition and requires successful CI/CodeQL on the publisher controller commit itself.
 
-The workflow grants write permission only to the release job and serializes publication without cancelling an active upload. Existing public releases are refused. Existing tags must be lightweight commit refs pointing exactly to the selected SHA; do not create an annotated v0.5.2 tag for this flow.
+One component can also be selected. The optional source field is a consistency check for the prepared candidate; in `all` mode it applies only to Main. Surrounding clipboard whitespace and uppercase hex are normalized. A mismatching source is refused rather than silently publishing a different build.
 
-Inspect [`release/notes/v0.5.2.md`](release/notes/v0.5.2.md), archive names and platform coverage before choosing `publish`. A server draft must contain exactly its verified server asset set. Drafts with Editor/SDK or unexpected assets are refused; other component assets are never overwritten or deleted. A combined component release requires a separate component manifest and publication design.
+The legacy server-only command remains available for preparing an initial server draft: `python scripts/publish_release.py --sha SHA --mode draft`. All four v0.5.2 drafts are already prepared and verified. The combined workflow publishes them under their independent tags.
 
 ## Retry and recovery
 
-A failed upload leaves a private incomplete draft. Retrying verifies the digest of every existing asset and uploads only missing files. Conflicting, duplicated or unexpected assets stop the operation for maintainer review; the script does not clobber them. The publisher does not repair or modify an already public release.
+A failed upload leaves a private incomplete draft. Retrying verifies the digest of every existing asset and uploads only missing files. Conflicting, duplicated or unexpected assets stop the operation for maintainer review; the script does not clobber them. The combined publisher accepts an already public component only when its prepared source, tag and every asset digest still match; it leaves that component unchanged and continues with remaining drafts. The legacy server-only publisher still refuses public releases.
 
-Expired artifacts require a new successful platform run and fresh validation. A failed or in-progress latest attempt cannot fall back to an older success. If a required workflow changes or reruns during publication, validation must be repeated.
+Expired artifacts require a new successful platform run and fresh validation. A failed or in-progress latest attempt cannot fall back to an older success. A changed build/attempt requires package verification and an updated component plan. If a required workflow changes or reruns during publication, validation must be repeated.
 
 [`release/release.json`](release/release.json) declares the version, component, workflow gates and artifact. Build identity is stored in `build.json` and carried into the release as `release-build.json`; this records the source SHA, build run ID, run attempt, version and verified asset hashes. The publisher reuses built files and does not rebuild binaries during publication.
 
@@ -88,3 +84,5 @@ uncached, tickets remain one-time and the nonce-based content security policy
 applies to both scripts. Browser tests cover two-participant audio/video,
 concurrent joins, denied media, missing/reused tickets, stalled authorization
 and a broken primary script.
+
+GitHub publishes separate releases through separate API calls; the four public transitions are not an atomic transaction. On an interrupted run, inspect the saved publication report and rerun the combined workflow to reconcile already published components and finish the remaining drafts.
