@@ -39,7 +39,8 @@ def validate(folder: Path, sha: str, run_id: str) -> dict:
                     members = archive.namelist()
                     if any(Path(member).is_absolute() or '..' in Path(member).parts or '\\' in member for member in members):
                         raise ValueError('Unsafe portable archive: ' + name)
-                    binary = ('JSON-API-Forge-Editor.app/Contents/MacOS/JSON-API-Forge-Editor' if platform.startswith('macos')
+                    # macOS ditto --keepParent preserves the stage directory.
+                    binary = ('stage/JSON-API-Forge-Editor.app/Contents/MacOS/JSON-API-Forge-Editor' if platform.startswith('macos')
                               else 'bin/JSON-API-Forge-Editor' + ('.exe' if platform.startswith('windows') else ''))
                     if binary not in members:
                         raise ValueError('Missing portable executable: ' + name)

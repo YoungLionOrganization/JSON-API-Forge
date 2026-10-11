@@ -33,7 +33,7 @@ class ReleaseAssetsTests(unittest.TestCase):
             for platform in release.PLATFORMS:
                 prefix = 'JSON-API-Forge-Editor-v0.5.2-' + platform
                 archive = folder / (prefix + '.zip')
-                binary = 'JSON-API-Forge-Editor.app/Contents/MacOS/JSON-API-Forge-Editor' if platform.startswith('macos') else 'bin/JSON-API-Forge-Editor' + ('.exe' if platform.startswith('windows') else '')
+                binary = 'stage/JSON-API-Forge-Editor.app/Contents/MacOS/JSON-API-Forge-Editor' if platform.startswith('macos') else 'bin/JSON-API-Forge-Editor' + ('.exe' if platform.startswith('windows') else '')
                 with zipfile.ZipFile(archive, 'w') as bundle:
                     bundle.writestr(binary, b'executable fixture')
                 suffix = '.exe' if platform.startswith('windows') else '.dmg' if platform.startswith('macos') else '.run'
