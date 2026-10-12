@@ -2,6 +2,7 @@
 
 ## Unreleased maintenance
 
+- Accept valid JSON `null` responses in sync/async requests instead of incorrectly reporting HTTP 200 as malformed JSON.
 - Protect async sessions against delayed authentication, logout and unauthorized responses so stale requests cannot restore a signed-out session or replace/clear a newer account.
 - Move async attachment snapshot, multipart file reads and atomic download writes off the event loop; drain active disk workers before returning cancellation or closing owned files.
 - Never replay multipart file bodies across cluster endpoints, including PUT and keyed POST requests.

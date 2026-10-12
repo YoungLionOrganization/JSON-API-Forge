@@ -153,10 +153,12 @@ def _headers(
 
 def _decode_response(response: httpx.Response, content: bytes, *, expect_json: bool) -> ForgeResponse[Any]:
     detail: Any
+    valid_json = True
     try:
         decoded = json.loads(content) if content else None
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         decoded = None
+        valid_json = False
     if response.is_redirect:
         raise ForgeHTTPError(
             response.status_code,
@@ -177,7 +179,7 @@ def _decode_response(response: httpx.Response, content: bytes, *, expect_json: b
             response.headers.get("X-Request-ID"),
             response.headers.get("Retry-After"),
         )
-    if expect_json and decoded is None and content:
+    if expect_json and not valid_json and content:
         raise ForgeHTTPError(response.status_code, "Server returned non-JSON content", response.headers.get("X-Request-ID"))
     data = decoded if expect_json else content
     return ForgeResponse(
