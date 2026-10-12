@@ -2,6 +2,8 @@
 
 ## Unreleased maintenance
 
+- Negotiate identity encoding for bounded HTTP sources/JWKS and reject encoded bodies before decoding; ignore non-finite Retry-After values and close recovered request circuits.
+- Reject unsafe checksum manifest records and linked/reparse-point source parents, pruning ignored build directories before exported-source traversal.
 - Keep Editor document lock acquisition, validation, atomic publication and release in one IO worker. Cancelled saves stop waiting for busy locks and drain owned work before releasing the write mutex; slow disk work no longer blocks the event loop.
 - Reload malformed cache envelopes instead of returning internal metadata or failing requests on invalid, non-finite or overflowing expiry values.
 - Close Redis pub/sub resources when subscription setup fails or is cancelled, reject listeners that already stopped, and permit a clean subsequent connection attempt.
