@@ -153,7 +153,10 @@ class CopyInstallerTests(unittest.TestCase):
             "destination=${@: -1}\n"
             'mkdir -p -- "${destination%/}/Test"\n'
             'printf user-data > "${destination%/}/Test/user.txt"\n'
-            'exec /usr/bin/mv "$@"\n',
+            # Modern GNU mv reports a no-clobber skip as failure; reproduce
+            # that behavior on Git Bash too, rather than relying on its version.
+            '/usr/bin/mv "$@" || true\n'
+            "exit 1\n",
             encoding="utf-8",
             newline="\n",
         )
