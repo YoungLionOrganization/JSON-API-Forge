@@ -2,6 +2,7 @@
 
 ## Unreleased maintenance
 
+- Reject unsafe manifest records and Windows junctions before enumerating or hashing release sources, while continuing to exclude build artifacts from extracted-source scans.
 - Close every cluster client even if one close fails; finish async client cleanup before reporting errors or cancellation and drain cancelled health/bulk siblings safely.
 - Validate integer bulk bounds, worker counts, routing weights and failure thresholds before consuming work.
 - Accept valid JSON `null` responses in sync/async requests instead of incorrectly reporting HTTP 200 as malformed JSON.
