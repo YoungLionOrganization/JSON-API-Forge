@@ -231,6 +231,9 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.13"
+      - name: Check Windows manifest reparse boundaries
+        if: runner.os == 'Windows'
+        run: python -m unittest discover -s editor/tests -p "test_manifest.py" -v
       - name: Install Qt on Windows x64
         if: matrix.artifact == 'windows-x64'
         uses: jurplel/install-qt-action/action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1, direct Node 24 action

@@ -10,6 +10,7 @@
 - Preserve SQL row-count guards and operation cache invalidation targets when compiling mutation graphs; reject malformed guard and invalidation values.
 - Add a native cross-component contract check that compares generated exampleApps transition graphs with their complete RPC operation definitions.
 - Correlate each call-start and ticket request independently so delayed failures from a previous space or earlier attempt cannot cancel a new call, including returning to the same space.
+- Reject unsafe manifest paths and malformed SHA-256 records before scanning or hashing; block symbolic links and Windows reparse/junction boundaries without entering them during source fallback scans.
 - Keep these changes separate from the frozen v0.5.2 publication candidate.
 
 ## [0.5.2] — 2026-10-04
