@@ -36,6 +36,14 @@ MAX_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_FILE_BYTES = 16 * 1024 * 1024
 
 
+def _is_link(metadata: os.stat_result) -> bool:
+    # Windows junctions are reparse points but are not reported as symlinks.
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
+
+
 def _source_date_epoch() -> int:
     configured = os.environ.get("SOURCE_DATE_EPOCH")
     if configured:
@@ -55,14 +63,14 @@ def _source_date_epoch() -> int:
 
 def _sources() -> list[tuple[Path, str, os.stat_result]]:
     app_root = ROOT / "app"
-    if app_root.is_symlink() or not app_root.is_dir():
+    if _is_link(app_root.lstat()) or not app_root.is_dir():
         raise RuntimeError("app root must be a real directory")
     paths = []
     for count, path in enumerate(app_root.rglob("*"), 1):
         if count > MAX_FILES * 2:
             raise RuntimeError("bundle source contains too many directory entries")
-        if path.is_symlink():
-            raise RuntimeError(f"bundle source contains symlinks: {path}")
+        if _is_link(path.lstat()):
+            raise RuntimeError(f"bundle source contains symlinks or junctions: {path}")
         if path.is_file():
             paths.append(path)
     paths.extend(
@@ -81,8 +89,15 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
     names = set()
     total = 0
     for path in paths:
+        for parent in path.parents:
+            if parent == ROOT:
+                break
+            if _is_link(parent.lstat()):
+                raise RuntimeError(
+                    f"bundle source parent contains symlinks or junctions: {parent}"
+                )
         metadata = path.lstat()
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        if _is_link(metadata) or not stat.S_ISREG(metadata.st_mode):
             raise RuntimeError(
                 f"bundle source must be a regular non-symlink file: {path}"
             )

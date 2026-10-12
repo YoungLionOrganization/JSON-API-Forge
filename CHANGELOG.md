@@ -6,9 +6,13 @@
 - Fix unreadable transition audit rows by declaring status payloads as text; keep assignment details as nullable JSON metadata rather than inserting unencoded step strings.
 - Require an explicit nullable assignment deadline and verify failed assignments/transitions leave no orphan workflow or audit rows.
 - Fix Git Bash drive-path hangs, reject trailing-slash link destinations, preserve late targets, and treat PowerShell bracket paths literally.
+- Reject Windows junctions and other reparse points in bundle sources and source parents before reading files outside the catalog.
+- Validate manifest paths and SHA-256 records before hashing; reject drive paths, alternate streams, traversal, generated secrets and linked source parents.
 - Clarify shared operator access and assignment metadata, without claiming per-owner isolation or dual-control approval.
 
 These changes do not replace the frozen v0.5.2 release assets. Compile the updated graphs with the matching maintenance Editor, whose compiler preserves row-count guards and invalidation arrays.
+
+Existing deployments that created the generated audit `payload` as a native PostgreSQL JSON column need a reviewed migration to text before adopting the updated configuration. Editing a resource declaration does not alter existing database column types.
 
 ## 0.5.2 — 2026-10-11
 

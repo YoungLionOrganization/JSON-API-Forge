@@ -4,6 +4,7 @@
 import hashlib
 import importlib.util
 import os
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -104,6 +105,35 @@ class ReleaseToolsTests(unittest.TestCase):
                 bundle.build(self.root / "epoch.zip")
             with zipfile.ZipFile(self.root / "epoch.zip") as archive:
                 self.assertEqual(archive.infolist()[0].date_time[0], year)
+
+    @unittest.skipUnless(os.name == "nt", "Windows junction boundary")
+    def test_windows_junction_sources_are_rejected(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "private-key.txt").write_bytes(b"outside fixture never bundled")
+        for relative in ("app/Test/external", "scripts", "app"):
+            with self.subTest(source=relative):
+                link = self.root / relative
+                original = link.with_name(link.name + ".original")
+                if link.exists():
+                    link.rename(original)
+                result = subprocess.run(
+                    ["cmd", "/c", "mklink", "/J", str(link), str(outside)],
+                    capture_output=True,
+                )
+                if result.returncode:
+                    if original.exists():
+                        original.rename(link)
+                    self.skipTest("Junction creation unavailable")
+                try:
+                    output = self.root / "junction.zip"
+                    with self.assertRaises(RuntimeError):
+                        bundle.build(output)
+                    self.assertFalse(output.exists())
+                finally:
+                    link.rmdir()
+                    if original.exists():
+                        original.rename(link)
 
     def test_changed_source_preserves_existing_output(self):
         output = self.root / "existing.zip"
