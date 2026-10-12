@@ -206,7 +206,7 @@ EXAMPLES: tuple[dict[str, Any], ...] = (
         "domain": "finance",
         "entity": "batches",
         "statuses": ["draft", "review", "approved", "posted", "rejected"],
-        "focus": "Synthetic financial operations workflow with dual-control permissions, batch totals and idempotent audit transitions.",
+        "focus": "Synthetic financial operations workflow with scoped operator permissions, batch totals and idempotent audit transitions.",
     },
     {
         "directory": "EditorPluginRegistry",
@@ -419,7 +419,8 @@ def _resources(definition: dict[str, Any]) -> dict[str, Any]:
             "record_id": _column("integer", nullable=False, index=True),
             "event_type": _column("string", nullable=False, index=True, max_length=64),
             "actor_id": _column("string", nullable=False, index=True, max_length=96),
-            "payload": _column("json"),
+            # SQL transition stores a status token, not an encoded JSON document.
+            "payload": _column("text"),
             "idempotency_key": _column("string", index=True, max_length=128),
             "created_at": _column("datetime", index=True),
         },
@@ -547,7 +548,7 @@ def _operations(definition: dict[str, Any]) -> dict[str, Any]:
         "idempotency": True,
         "input_schema": {
             "type": "object",
-            "required": ["record_id", "assigned_to", "step"],
+            "required": ["record_id", "assigned_to", "step", "due_at"],
             "additionalProperties": False,
             "properties": {
                 "record_id": {"type": "integer", "minimum": 1},
@@ -559,8 +560,8 @@ def _operations(definition: dict[str, Any]) -> dict[str, Any]:
         "statements": [
             {
                 "sql": _catalog_sql(
-                    "INSERT INTO {workflow_table} (record_id, step, state, assigned_to, due_at, details, created_at) "
-                    "VALUES (:record_id, :step, 'open', :assigned_to, :due_at, :details, CURRENT_TIMESTAMP)",
+                    "INSERT INTO {workflow_table} (record_id, step, state, assigned_to, due_at, created_at) "
+                    "VALUES (:record_id, :step, 'open', :assigned_to, :due_at, CURRENT_TIMESTAMP)",
                     workflow_table=workflow_table,
                 ),
                 "mode": "execute",
@@ -569,7 +570,6 @@ def _operations(definition: dict[str, Any]) -> dict[str, Any]:
                     "step": "$body.step",
                     "assigned_to": "$body.assigned_to",
                     "due_at": "$body.due_at",
-                    "details": "$body.step",
                 },
                 "result_name": "assignment",
             },
@@ -596,8 +596,8 @@ def _operations(definition: dict[str, Any]) -> dict[str, Any]:
 
 
 def _graph(definition: dict[str, Any]) -> dict[str, Any]:
-    domain = definition["domain"]
-    resource_table = f"{domain}_{definition['entity']}"
+    # The graph must preserve the same validation, audit and cache contract as RPC.
+    transition = _operations(definition)["operations"][1]
     nodes = [
         {
             "id": "request",
@@ -605,7 +605,10 @@ def _graph(definition: dict[str, Any]) -> dict[str, Any]:
             "title": "Transition request",
             "x": 0,
             "y": 0,
-            "properties": {"method": "POST"},
+            "properties": {
+                "method": transition["method"],
+                "input_schema": transition["input_schema"],
+            },
         },
         {
             "id": "policy",
@@ -614,48 +617,50 @@ def _graph(definition: dict[str, Any]) -> dict[str, Any]:
             "x": 300,
             "y": 0,
             "properties": {
-                "permission": f"{domain}.{definition['entity']}.transition",
+                "permission": transition["permission"],
                 "public": False,
             },
         },
         {
             "id": "update",
             "type": "data.mutate",
-            "title": "Update state",
+            "title": "Update active record",
             "x": 600,
             "y": 0,
-            "properties": {
-                "sql": _catalog_sql(
-                    "UPDATE {resource_table} SET status = :next_status WHERE id = :record_id",
-                    resource_table=resource_table,
-                ),
-                "mode": "execute",
-                "params": {
-                    "next_status": "$body.next_status",
-                    "record_id": "$body.record_id",
-                },
-                "result_name": "transition",
-            },
+            "properties": transition["statements"][0],
+        },
+        {
+            "id": "audit",
+            "type": "data.mutate",
+            "title": "Record audit event",
+            "x": 900,
+            "y": 0,
+            "properties": transition["statements"][1],
         },
         {
             "id": "operation",
             "type": "operation.call",
             "title": "Forge operation",
-            "x": 900,
+            "x": 1200,
             "y": 0,
             "properties": {
-                "name": f"{domain}.transition",
-                "method": "POST",
-                "database": "primary",
-                "idempotency": True,
-                "summary": "Graph model for the audited transition",
+                key: transition[key]
+                for key in (
+                    "name",
+                    "method",
+                    "database",
+                    "idempotency",
+                    "summary",
+                    "invalidate_resources",
+                    "invalidate_operations",
+                )
             },
         },
         {
             "id": "response",
             "type": "response.output",
             "title": "Operation result",
-            "x": 1200,
+            "x": 1500,
             "y": 0,
             "properties": {"status_code": 200},
         },
@@ -679,11 +684,18 @@ def _graph(definition: dict[str, Any]) -> dict[str, Any]:
             "id": "edge-3",
             "from_node": "update",
             "from_port": "exec",
-            "to_node": "operation",
+            "to_node": "audit",
             "to_port": "exec",
         },
         {
             "id": "edge-4",
+            "from_node": "audit",
+            "from_port": "exec",
+            "to_node": "operation",
+            "to_port": "exec",
+        },
+        {
+            "id": "edge-5",
             "from_node": "operation",
             "from_port": "exec",
             "to_node": "response",
@@ -829,7 +841,7 @@ def _documents(definition: dict[str, Any]) -> dict[str, str]:
 
 | Area | Included behavior |
 |---|---|
-| Main records | `{domain}/{entity}` CRUD with bounded inputs, soft deletion and ownership policy |
+| Main records | `{domain}/{entity}` CRUD with bounded inputs, soft deletion and assignment metadata |
 | Atomic imports | Up to 100 primary records per transaction, with per-row defaults |
 | Supporting records | Policy, assignment and audit resources |
 | Workflow | Three transactional/analytics RPCs; states: {", ".join(f"`{status}`" for status in definition["statuses"])} |
@@ -861,6 +873,8 @@ Open `http://127.0.0.1:8000/api/{slug}/v1/_docs`. Use the bootstrap variable dec
 Use `POST /api/{slug}/v1/{domain}/{entity}/_batch` for up to 100 records in one transaction. The request body is an array of create payloads; the whole batch rolls back on a validation or constraint failure. This endpoint does not implement idempotent replay, so reconcile application identifiers before resubmitting after a network failure.
 
 Read `app.json` for the API prefix, `config/40-resources.json` for allowed CRUD fields/actions, `config/50-operations.json` for SQL/RPC contracts, and `config/60-events.json` for channel permissions. Keep changes to JSON configuration validated with the main runtime.
+
+`{domain}.assign` requires `record_id`, `assigned_to`, `step` and `due_at`; send `due_at: null` when no deadline is needed. Assignment details remain nullable JSON metadata. Transition audit `payload` stores the new status as text. Role permissions apply across this shared back-office project; the `owner_id` field is assignment metadata and does not enforce per-owner isolation.
 
 This README and the numbered fragments are generated by `scripts/generate_example_catalog.py` in exampleApps. Change that generator when contributing catalog updates, then run it and its `--check` mode. A private deployment can adapt its own copied configuration under the project license.
 

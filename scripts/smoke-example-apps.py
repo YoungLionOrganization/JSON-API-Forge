@@ -158,6 +158,66 @@ def _exercise_generated_app(
     assert transitioned.status_code == 200, (
         f"{slug} transition: {transitioned.status_code} {transitioned.text}"
     )
+    audit_rows = client.get(
+        f"{prefix}/{domain}/audit-events", params={"record_id": item_id}, headers=auth
+    )
+    assert audit_rows.status_code == 200, audit_rows.text
+    assert audit_rows.json()["items"][0]["payload"] == statuses[1]
+
+    assignment_body = {
+        "record_id": item_id,
+        "assigned_to": "ci-reviewer",
+        "step": "review",
+        "due_at": None,
+    }
+    assigned = client.post(
+        f"{prefix}/rpc/{domain}.assign",
+        headers={**auth, "Idempotency-Key": f"assign-{slug}-{nonce}"},
+        json=assignment_body,
+    )
+    assert assigned.status_code == 200, assigned.text
+    workflows = client.get(
+        f"{prefix}/{domain}/workflows", params={"record_id": item_id}, headers=auth
+    )
+    assert workflows.status_code == 200, workflows.text
+    assert workflows.json()["items"][0]["step"] == "review"
+    assert workflows.json()["items"][0]["details"] is None
+    missing_deadline = client.post(
+        f"{prefix}/rpc/{domain}.assign",
+        headers={**auth, "Idempotency-Key": f"missing-deadline-{slug}-{nonce}"},
+        json={key: value for key, value in assignment_body.items() if key != "due_at"},
+    )
+    assert missing_deadline.status_code == 422 and "due_at" in missing_deadline.text
+    orphan_id = item_id + 10_000_000
+    orphan = client.post(
+        f"{prefix}/rpc/{domain}.assign",
+        headers={**auth, "Idempotency-Key": f"orphan-{slug}-{nonce}"},
+        json={**assignment_body, "record_id": orphan_id},
+    )
+    assert orphan.status_code == 409, orphan.text
+    assert not client.get(
+        f"{prefix}/{domain}/workflows", params={"record_id": orphan_id}, headers=auth
+    ).json()["items"], "Failed assignment left a workflow row behind"
+    changed_owner = client.get(f"{route}/{item_id}", headers=auth)
+    assert changed_owner.json()["owner_id"] == "ci-reviewer"
+    removed = client.delete(f"{route}/{item_id}", headers=auth)
+    assert removed.status_code == 200, removed.text
+    removed_transition = client.post(
+        f"{prefix}/rpc/{domain}.transition",
+        headers={**auth, "Idempotency-Key": f"removed-{slug}-{nonce}"},
+        json=transition_body,
+    )
+    assert removed_transition.status_code == 409, removed_transition.text
+    assert (
+        len(
+            client.get(
+                f"{prefix}/{domain}/audit-events",
+                params={"record_id": item_id},
+                headers=auth,
+            ).json()["items"]
+        )
+        == 1
+    ), "Rejected transition left an audit event behind"
     if slug == "commerce-core":
         replay = client.post(
             f"{prefix}/rpc/{domain}.transition",

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased maintenance
+
+- Preserve input validation, row-count guards, audit insertion and cache invalidation in all 20 domain transition graphs, matching their JSON RPC contracts.
+- Fix unreadable transition audit rows by declaring status payloads as text; keep assignment details as nullable JSON metadata rather than inserting unencoded step strings.
+- Require an explicit nullable assignment deadline and verify failed assignments/transitions leave no orphan workflow or audit rows.
+- Fix Git Bash drive-path hangs, reject trailing-slash link destinations, preserve late targets, and treat PowerShell bracket paths literally.
+- Clarify shared operator access and assignment metadata, without claiming per-owner isolation or dual-control approval.
+
+These changes do not replace the frozen v0.5.2 release assets. Compile the updated graphs with the matching maintenance Editor, whose compiler preserves row-count guards and invalidation arrays.
+
 ## 0.5.2 — 2026-10-11
 
 - Add TaskBoard atomic batches and a permission-preserving read-only cursor feed with nullable due dates.

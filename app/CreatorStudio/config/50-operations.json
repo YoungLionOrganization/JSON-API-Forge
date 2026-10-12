@@ -110,7 +110,8 @@
         "required": [
           "record_id",
           "assigned_to",
-          "step"
+          "step",
+          "due_at"
         ],
         "additionalProperties": false,
         "properties": {
@@ -139,14 +140,13 @@
       },
       "statements": [
         {
-          "sql": "INSERT INTO creator_workflows (record_id, step, state, assigned_to, due_at, details, created_at) VALUES (:record_id, :step, 'open', :assigned_to, :due_at, :details, CURRENT_TIMESTAMP)",
+          "sql": "INSERT INTO creator_workflows (record_id, step, state, assigned_to, due_at, created_at) VALUES (:record_id, :step, 'open', :assigned_to, :due_at, CURRENT_TIMESTAMP)",
           "mode": "execute",
           "params": {
             "record_id": "$body.record_id",
             "step": "$body.step",
             "assigned_to": "$body.assigned_to",
-            "due_at": "$body.due_at",
-            "details": "$body.step"
+            "due_at": "$body.due_at"
           },
           "result_name": "assignment"
         },

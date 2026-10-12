@@ -29,7 +29,7 @@ The catalog contains 25 named projects. The original five demonstrate specialize
 | `ResearchVault` | Dataset stewardship, access policies and provenance |
 | `HiringPipeline` | Candidate workflow, recruiter ownership and audit events |
 | `IncidentCommand` | Incident response, runbooks and realtime command updates |
-| `FinanceOps` | Synthetic dual-control batch operations and totals |
+| `FinanceOps` | Synthetic batch operations, scoped operators and totals |
 | `EditorPluginRegistry` | Forge-backed Editor plugin metadata, permissions and SHA-256 review state |
 
 Except for the explicitly public `PublicCatalog`, each project uses a generated `<SLUG>_BOOTSTRAP_ADMIN_KEY`. Run `forge init`; do not hand-author shared credentials.

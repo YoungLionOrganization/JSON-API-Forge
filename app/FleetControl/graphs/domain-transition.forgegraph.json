@@ -14,7 +14,40 @@
       "x": 0,
       "y": 0,
       "properties": {
-        "method": "POST"
+        "method": "POST",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "record_id",
+            "next_status",
+            "actor_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "record_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "next_status": {
+              "type": "string",
+              "enum": [
+                "available",
+                "assigned",
+                "maintenance",
+                "offline"
+              ]
+            },
+            "actor_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 96
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
+        }
       }
     },
     {
@@ -31,38 +64,66 @@
     {
       "id": "update",
       "type": "data.mutate",
-      "title": "Update state",
+      "title": "Update active record",
       "x": 600,
       "y": 0,
       "properties": {
-        "sql": "UPDATE fleet_vehicles SET status = :next_status WHERE id = :record_id",
+        "sql": "UPDATE fleet_vehicles SET status = :next_status, updated_at = CURRENT_TIMESTAMP WHERE id = :record_id AND deleted_at IS NULL",
         "mode": "execute",
         "params": {
           "next_status": "$body.next_status",
           "record_id": "$body.record_id"
         },
+        "require_rowcount_min": 1,
+        "require_rowcount_max": 1,
         "result_name": "transition"
+      }
+    },
+    {
+      "id": "audit",
+      "type": "data.mutate",
+      "title": "Record audit event",
+      "x": 900,
+      "y": 0,
+      "properties": {
+        "sql": "INSERT INTO fleet_audit_events (record_id, event_type, actor_id, payload, idempotency_key, created_at) VALUES (:record_id, :event_type, :actor_id, :payload, :idempotency_key, CURRENT_TIMESTAMP)",
+        "mode": "execute",
+        "params": {
+          "record_id": "$body.record_id",
+          "event_type": "status.transitioned",
+          "actor_id": "$body.actor_id",
+          "payload": "$body.next_status",
+          "idempotency_key": "$header.Idempotency-Key"
+        },
+        "result_name": "audit"
       }
     },
     {
       "id": "operation",
       "type": "operation.call",
       "title": "Forge operation",
-      "x": 900,
+      "x": 1200,
       "y": 0,
       "properties": {
         "name": "fleet.transition",
         "method": "POST",
         "database": "primary",
         "idempotency": true,
-        "summary": "Graph model for the audited transition"
+        "summary": "Atomic, idempotent state transition with audit insertion",
+        "invalidate_resources": [
+          "fleet/vehicles",
+          "fleet/audit-events"
+        ],
+        "invalidate_operations": [
+          "fleet.dashboard"
+        ]
       }
     },
     {
       "id": "response",
       "type": "response.output",
       "title": "Operation result",
-      "x": 1200,
+      "x": 1500,
       "y": 0,
       "properties": {
         "status_code": 200
@@ -88,11 +149,18 @@
       "id": "edge-3",
       "from_node": "update",
       "from_port": "exec",
-      "to_node": "operation",
+      "to_node": "audit",
       "to_port": "exec"
     },
     {
       "id": "edge-4",
+      "from_node": "audit",
+      "from_port": "exec",
+      "to_node": "operation",
+      "to_port": "exec"
+    },
+    {
+      "id": "edge-5",
       "from_node": "operation",
       "from_port": "exec",
       "to_node": "response",

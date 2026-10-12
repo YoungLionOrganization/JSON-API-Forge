@@ -27,7 +27,7 @@ $Target = Join-Path $Destination $Name
 Assert-NoReparseParents $Source
 Assert-NoReparseParents $Target
 
-if (-not (Test-Path (Join-Path $Source "app.json") -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath (Join-Path $Source "app.json") -PathType Leaf)) {
     throw "Unknown example: $Name"
 }
 $Links = @(Get-ChildItem -LiteralPath $Source -Recurse -Force | Where-Object {
@@ -36,7 +36,7 @@ $Links = @(Get-ChildItem -LiteralPath $Source -Recurse -Force | Where-Object {
 if ($Links) {
     throw "Refusing to copy an example that contains symbolic links: $Name"
 }
-if (Test-Path $Target) {
+if (Test-Path -LiteralPath $Target) {
     throw "Refusing to overwrite existing target: $Target"
 }
 
