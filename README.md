@@ -84,6 +84,8 @@ Security defaults include HTTPS-only remote URLs, no ambient proxy inheritance, 
 
 Async attachment snapshots, multipart file reads and atomic download writes run in worker threads so slow storage does not freeze other async tasks. Cancellation waits for an active disk operation to finish before closing its file or returning. If cancellation arrives during the atomic save, the destination may already contain the complete download when cancellation is reported; no background writer remains after that report.
 
+The async control-plane client discards an authentication response with `ForgeSessionError` if the session changed while it was pending, including sign-out, client close or a newer sign-in. An old request's unauthorized/logout response cannot clear a newer session.
+
 ## Cluster and optional integrations
 
 `ForgeCluster` and `AsyncForgeCluster` provide deterministic routing, circuit breakers, bounded bulk work and idempotency-gated failover across multiple Forge endpoints.

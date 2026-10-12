@@ -202,6 +202,7 @@ class _ControlPlaneBase:
         self._base_url = _base_url(base_url, allow_insecure_http=allow_insecure_http)
         self.max_attachment_bytes = int(max_attachment_bytes)
         self._session = bytearray()
+        self._session_revision = 0
 
     @property
     def has_session(self) -> bool:
@@ -213,6 +214,7 @@ class _ControlPlaneBase:
         self._session.extend(encoded)
 
     def clear_session(self) -> None:
+        self._session_revision += 1
         for index in range(len(self._session)):
             self._session[index] = 0
         self._session.clear()
@@ -233,7 +235,9 @@ class _ControlPlaneBase:
             values[name] = value
         return values
 
-    def _adopt_authentication(self, response: ForgeResponse[Any]) -> ForgeResponse[JsonObject]:
+    def _adopt_authentication(self, response: ForgeResponse[Any], *, revision: int | None = None) -> ForgeResponse[JsonObject]:
+        if revision is not None and revision != self._session_revision:
+            raise ForgeSessionError("Session changed while authentication was pending; discard the stale response")
         verified = _object_response(response)
         payload = dict(verified.data)
         token = payload.pop("access_token", None)
@@ -564,6 +568,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         expect_json: bool = True,
         max_response_bytes: int | None = None,
     ) -> ForgeResponse[Any]:
+        revision = self._session_revision
         try:
             return await self._transport.request(
                 method,
@@ -576,7 +581,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
                 max_response_bytes=max_response_bytes,
             )
         except ForgeHTTPError as exc:
-            if authenticated and exc.status_code == 401:
+            if authenticated and exc.status_code == 401 and revision == self._session_revision:
                 self.clear_session()
             raise
 
@@ -591,6 +596,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         display_name: str,
     ) -> ForgeResponse[JsonObject]:
         self.clear_session()
+        revision = self._session_revision
         token = _credential(setup_token, name="setup token", minimum=32)
         response = await self._request(
             "POST",
@@ -599,17 +605,18 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
             authenticated=False,
             extra_headers={"X-Forge-Setup-Token": token},
         )
-        return self._adopt_authentication(response)
+        return self._adopt_authentication(response, revision=revision)
 
     async def login(self, username: str, password: str) -> ForgeResponse[JsonObject]:
         self.clear_session()
+        revision = self._session_revision
         response = await self._request(
             "POST",
             _control_path("auth", "login"),
             json_body=_profile_payload(username, password),
             authenticated=False,
         )
-        return self._adopt_authentication(response)
+        return self._adopt_authentication(response, revision=revision)
 
     async def register(
         self,
@@ -619,16 +626,19 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         display_name: str,
     ) -> ForgeResponse[JsonObject]:
         self.clear_session()
+        revision = self._session_revision
         payload = _profile_payload(username, password, display_name)
         payload["invitation"] = _credential(invitation, name="invitation", pattern=_INVITATION_TOKEN)
         response = await self._request("POST", _control_path("auth", "register"), json_body=payload, authenticated=False)
-        return self._adopt_authentication(response)
+        return self._adopt_authentication(response, revision=revision)
 
     async def logout(self) -> ForgeResponse[Any]:
+        revision = self._session_revision
         try:
             return await self._request("POST", _control_path("auth", "logout"), expect_json=False)
         finally:
-            self.clear_session()
+            if revision == self._session_revision:
+                self.clear_session()
 
     async def capabilities(self) -> ForgeResponse[JsonObject]:
         return _object_response(await self._request("GET", _control_path("capabilities")))
