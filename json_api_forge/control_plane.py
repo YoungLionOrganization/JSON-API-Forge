@@ -4,14 +4,15 @@ import os
 import re
 import stat
 import tempfile
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import unquote, urlencode, urljoin, urlsplit, urlunsplit
 
 import httpx
 
+from ._io import run_io
 from .client import AsyncForgeClient, ForgeClient, _base_url, _controls, _route, _segment
 from .errors import ForgeHTTPError, ForgeSessionError
 from .models import ForgeResponse, JsonObject
@@ -182,6 +183,16 @@ def _open_attachment(source: str | os.PathLike[str], max_bytes: int) -> Iterator
             os.close(descriptor)
         if snapshot is not None:
             snapshot.close()
+
+
+@asynccontextmanager
+async def _open_attachment_async(source: str | os.PathLike[str], max_bytes: int) -> AsyncIterator[tuple[str, BinaryIO]]:
+    attachment = _open_attachment(source, max_bytes)
+    try:
+        yield await run_io(attachment.__enter__)
+    finally:
+        # run_io drains an interrupted snapshot/read before its file closes.
+        await run_io(attachment.__exit__, None, None, None)
 
 
 class _ControlPlaneBase:
@@ -752,7 +763,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         return _object_response(await self._request("GET", _control_path("areas", area_id, "attachments"), params={"limit": limit}))
 
     async def upload_attachment(self, area_id: str, source: str | os.PathLike[str]) -> ForgeResponse[JsonObject]:
-        with _open_attachment(source, self.max_attachment_bytes) as (name, handle):
+        async with _open_attachment_async(source, self.max_attachment_bytes) as (name, handle):
             response = await self._request(
                 "POST",
                 _control_path("areas", area_id, "attachments"),
@@ -773,7 +784,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         )
         if not isinstance(response.data, bytes):
             raise ForgeHTTPError(response.status_code, "Attachment response was not binary", response.request_id)
-        return _copy_response(response, _atomic_save(target, response.data))
+        return _copy_response(response, await run_io(_atomic_save, target, response.data))
 
     async def start_call(self, area_id: str, *, mode: str = "video") -> ForgeResponse[JsonObject]:
         return _object_response(await self._request("POST", _control_path("calls"), json_body={"area_id": area_id, "mode": mode}))

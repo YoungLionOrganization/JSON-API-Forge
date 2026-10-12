@@ -9,11 +9,13 @@ import time
 import unicodedata
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from typing import Any, Literal
 from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
+from ._io import run_io
 from .errors import ForgeHTTPError, ForgeResponseTooLarge, ForgeTransportError, safe_error_text
 from .models import ForgeResponse, JsonObject, RequestAttempt
 from .options import RetryPolicy
@@ -232,6 +234,36 @@ async def _bounded_content_async(response: httpx.Response, max_response_bytes: i
             raise ForgeResponseTooLarge(f"Response exceeds max_response_bytes={max_response_bytes}")
         chunks.extend(chunk)
     return bytes(chunks)
+
+
+class _AsyncFileStream(httpx.AsyncByteStream):
+    """Keep httpx multipart's synchronous file reads off the event loop."""
+
+    def __init__(self, stream: httpx.SyncByteStream):
+        self._chunks = iter(stream)
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        while True:
+            chunk = await run_io(next, self._chunks, None)
+            if chunk is None:
+                break
+            yield chunk
+
+
+@asynccontextmanager
+async def _stream_async(client: httpx.AsyncClient, method: str, path: str, **kwargs: Any) -> AsyncIterator[httpx.Response]:
+    if kwargs.get("files") is None:
+        async with client.stream(method, path, **kwargs) as response:
+            yield response
+        return
+    # Request assembly also seeks/fstats files to compute Content-Length.
+    request = await run_io(client.build_request, method, path, **kwargs)
+    request.stream = _AsyncFileStream(request.stream)
+    response = await client.send(request, stream=True)
+    try:
+        yield response
+    finally:
+        await response.aclose()
 
 
 class ForgeClient:
@@ -509,7 +541,8 @@ class AsyncForgeClient:
             try:
                 self._client.cookies.clear()
                 try:
-                    async with self._client.stream(
+                    async with _stream_async(
+                        self._client,
                         normalized_method,
                         normalized_path,
                         json=json_body,

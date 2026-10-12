@@ -2,6 +2,7 @@
 
 ## Unreleased maintenance
 
+- Move async attachment snapshot, multipart file reads and atomic download writes off the event loop; drain active disk workers before returning cancellation or closing owned files.
 - Never replay multipart file bodies across cluster endpoints, including PUT and keyed POST requests.
 - Cancel and drain sibling operations when an async bulk item is cancelled, so no owned operation continues after bulk returns.
 - Reject non-integer async concurrency values before consuming work; fractional semaphore counts could otherwise bypass the parallelism limit.

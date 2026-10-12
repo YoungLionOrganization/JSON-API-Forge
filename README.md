@@ -82,6 +82,8 @@ The control-plane clients cover founder setup, invitation enrollment, profiles, 
 
 Security defaults include HTTPS-only remote URLs, no ambient proxy inheritance, no redirects or retained cookies, strict same-origin paths, exact token formats, bounded response bodies, non-symlink attachment snapshots and atomic downloads. WebRTC call tickets are placed in a URL fragment for the local call client, never in an HTTP query. v0.5.2 uses the revision 2 HTTP signaling call client.
 
+Async attachment snapshots, multipart file reads and atomic download writes run in worker threads so slow storage does not freeze other async tasks. Cancellation waits for an active disk operation to finish before closing its file or returning. If cancellation arrives during the atomic save, the destination may already contain the complete download when cancellation is reported; no background writer remains after that report.
+
 ## Cluster and optional integrations
 
 `ForgeCluster` and `AsyncForgeCluster` provide deterministic routing, circuit breakers, bounded bulk work and idempotency-gated failover across multiple Forge endpoints.
