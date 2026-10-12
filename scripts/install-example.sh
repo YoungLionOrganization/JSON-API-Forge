@@ -58,7 +58,14 @@ if [[ -e "$target_dir" || -L "$target_dir" ]]; then
   exit 1
 fi
 # Move into the known parent. A late target must never receive a nested copy.
-mv -n -- "$staging/$name" "$destination_root/"
+if ! mv -n -- "$staging/$name" "$destination_root/"; then
+  if [[ -e "$target_dir" || -L "$target_dir" ]]; then
+    echo "Target appeared during installation: $target_dir" >&2
+  else
+    echo "Could not safely install $name at $target_dir" >&2
+  fi
+  exit 1
+fi
 if [[ -e "$staging/$name" ]]; then
   echo "Target appeared during installation: $target_dir" >&2
   exit 1
