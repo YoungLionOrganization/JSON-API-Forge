@@ -1183,16 +1183,16 @@ void ApiClient::fetchDatabaseRows(const QString &project, const QString &alias, 
          {}, query);
 }
 
-void ApiClient::startCall(const QString &areaId, const QString &mode)
+void ApiClient::startCall(const QString &areaId, const QString &mode, const QString &operation)
 {
-    send(QStringLiteral("team-call:%1").arg(areaId), QNetworkAccessManager::PostOperation,
+    send(operation.isEmpty() ? QStringLiteral("team-call:%1").arg(areaId) : operation, QNetworkAccessManager::PostOperation,
          {QStringLiteral("calls")},
          QJsonObject{{QStringLiteral("area_id"), areaId}, {QStringLiteral("mode"), mode}});
 }
 
-void ApiClient::createCallTicket(const QString &callId)
+void ApiClient::createCallTicket(const QString &callId, const QString &operation)
 {
-    send(QStringLiteral("team-call-ticket:%1").arg(callId), QNetworkAccessManager::PostOperation,
+    send(operation.isEmpty() ? QStringLiteral("team-call-ticket:%1").arg(callId) : operation, QNetworkAccessManager::PostOperation,
          {QStringLiteral("calls"), callId, QStringLiteral("ticket")});
 }
 

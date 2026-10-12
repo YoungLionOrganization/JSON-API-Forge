@@ -187,6 +187,7 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
             [this](const QString &operation, int status, const QString &message, const QString &category,
                    const QString &, bool outcomeUncertain) {
                 if (category == QStringLiteral("canceled") && !operation.startsWith(QStringLiteral("team-attachment-"))) { return; }
+                if (!acceptsCallOperation(operation)) { return; }
                 handleError(operation, status, message);
                 if (operation.startsWith(QStringLiteral("team-")) && outcomeUncertain) {
                     m_feedback->setText(message + QStringLiteral(" Check whether the change reached the server before retrying."));
@@ -703,8 +704,7 @@ void TeamWorkspace::setProject(const QString &project)
     m_attachmentRecords = {};
     m_activeCalls->clear();
     m_callRecords = {}; m_callsLoading.clear();
-    m_pendingCallArea.clear();
-    m_pendingCallId.clear();
+    clearPendingCall();
     m_extrasLoading = false;
     m_attachments->clear();
     m_databaseTree->clear();
@@ -760,8 +760,7 @@ void TeamWorkspace::reset()
     m_callsEnabled = false;
     m_callDiscovery = false;
     m_callClientReady = false;
-    m_pendingCallArea.clear();
-    m_pendingCallId.clear();
+    clearPendingCall();
     m_pendingUploadArea.clear();
     m_transferBusy = false;
     m_extrasLoading = false;
@@ -827,8 +826,7 @@ void TeamWorkspace::selectArea()
     m_messages->clearConversation();
     m_activeCalls->clear();
     m_callRecords = {}; m_callsLoading.clear();
-    m_pendingCallArea.clear();
-    m_pendingCallId.clear();
+    clearPendingCall();
     m_extrasLoading = false;
     m_spaceTitle->setText(m_areas->currentItem() != nullptr
         ? QStringLiteral("# ") + m_areas->currentItem()->text().section(u'\n', 0, 0) : QStringLiteral("# Choose a space"));
@@ -1255,9 +1253,10 @@ void TeamWorkspace::startCall(const QString &mode)
     }
     m_feedback->hide();
     m_pendingCallArea = currentAreaId();
+    m_pendingCallOperation = QStringLiteral("team-call:%1:request:%2").arg(m_pendingCallArea).arg(++m_callRequestSerial);
     m_spaceTitle->setText(QStringLiteral("Creating %1 call…").arg(mode));
     updateActions();
-    m_api->startCall(m_pendingCallArea, mode);
+    m_api->startCall(m_pendingCallArea, mode, m_pendingCallOperation);
 }
 
 void TeamWorkspace::joinCall()
@@ -1268,7 +1267,23 @@ void TeamWorkspace::joinCall()
     m_feedback->hide();
     m_spaceTitle->setText(QStringLiteral("Preparing your call access…"));
     updateActions();
-    m_api->createCallTicket(m_pendingCallId);
+    requestCallTicket();
+}
+
+void TeamWorkspace::requestCallTicket()
+{
+    m_pendingCallOperation.clear();
+    m_pendingCallTicketOperation = QStringLiteral("team-call-ticket:%1:request:%2").arg(m_pendingCallId).arg(++m_callRequestSerial);
+    m_api->createCallTicket(m_pendingCallId, m_pendingCallTicketOperation);
+}
+
+void TeamWorkspace::clearPendingCall()
+{
+    m_pendingCallArea.clear();
+    m_pendingCallId.clear();
+    m_pendingCallOperation.clear();
+    m_pendingCallTicketOperation.clear();
+    m_browserCallNext = false;
 }
 
 void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payload)
@@ -1541,26 +1556,25 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         updateActions();
         return;
     }
-    if (operation == QStringLiteral("team-call:%1").arg(m_pendingCallArea) && m_pendingCallArea == currentAreaId()) {
+    if (!m_pendingCallOperation.isEmpty() && operation == m_pendingCallOperation && m_pendingCallArea == currentAreaId()) {
         m_pendingCallId = payload.value(QStringLiteral("id")).toString();
         if (m_pendingCallId.isEmpty()) { handleError(operation, 0, QStringLiteral("The server returned no call ID.")); return; }
-        m_api->createCallTicket(m_pendingCallId);
+        requestCallTicket();
         return;
     }
     if (operation.startsWith(QStringLiteral("team-call-ticket:"))) {
-        if (m_pendingCallId.isEmpty() || operation != QStringLiteral("team-call-ticket:%1").arg(m_pendingCallId)
+        if (m_pendingCallId.isEmpty() || operation != m_pendingCallTicketOperation
             || m_pendingCallArea != currentAreaId()) { return; }
-        m_pendingCallArea.clear();
-        m_pendingCallId.clear();
+        const bool browserNext = m_browserCallNext;
+        clearPendingCall();
         m_spaceTitle->setText(QStringLiteral("# ") + m_areas->currentItem()->text().section(u'\n', 0, 0));
         updateActions();
         const auto url = m_api->callClientUrl(payload.value(QStringLiteral("call_client_path")).toString(),
                                               payload.value(QStringLiteral("ticket")).toString());
         if (!url.isValid()) {
             emit statusMessage(QStringLiteral("The server returned an invalid call URL."));
-        } else if (m_browserCallNext) {
-            m_browserCallNext = false;
-            if (!QDesktopServices::openUrl(url)) { handleError(operation, 0, QStringLiteral("Could not open the call in your browser.")); }
+        } else if (browserNext) {
+            if (!QDesktopServices::openUrl(url)) { handleError(QStringLiteral("team-call-open"), 0, QStringLiteral("Could not open the call in your browser.")); }
         } else {
             openCall(url);
         }
@@ -1581,8 +1595,22 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
     }
 }
 
+bool TeamWorkspace::acceptsCallOperation(const QString &operation) const
+{
+    if (operation.startsWith(QStringLiteral("team-call:"))) {
+        return !m_pendingCallArea.isEmpty() && m_pendingCallArea == currentAreaId()
+            && operation == m_pendingCallOperation;
+    }
+    if (operation.startsWith(QStringLiteral("team-call-ticket:"))) {
+        return !m_pendingCallId.isEmpty() && m_pendingCallArea == currentAreaId()
+            && operation == m_pendingCallTicketOperation;
+    }
+    return true;
+}
+
 void TeamWorkspace::handleError(const QString &operation, int statusCode, const QString &message)
 {
+    if (!acceptsCallOperation(operation)) { return; }
     if (operation.startsWith(QStringLiteral("team-attachment-"))) {
         m_transferBusy = false;
         m_pendingUploadArea.clear();
@@ -1594,7 +1622,7 @@ void TeamWorkspace::handleError(const QString &operation, int statusCode, const 
     if (operation == QStringLiteral("team-attachments:%1").arg(currentAreaId())) { m_extrasLoading = false; }
     if (operation == QStringLiteral("team-calls:%1").arg(m_callsLoading)) { m_callsLoading.clear(); }
     if (operation.startsWith(QStringLiteral("team-call:")) || operation.startsWith(QStringLiteral("team-call-ticket:"))) {
-        m_pendingCallArea.clear(); m_pendingCallId.clear(); m_browserCallNext = false; updateActions();
+        clearPendingCall(); updateActions();
         m_spaceTitle->setText(m_areas->currentItem() != nullptr
             ? QStringLiteral("# ") + m_areas->currentItem()->text().section(u'\n', 0, 0) : QStringLiteral("# Choose a space"));
     }
@@ -1641,7 +1669,7 @@ void TeamWorkspace::openCall(const QUrl &url)
         dialog->close();
         updateActions();
         // Tickets are single-use: the embedded page has already consumed its link.
-        m_api->createCallTicket(m_pendingCallId);
+        requestCallTicket();
     });
     auto *profile = new QWebEngineProfile(dialog);
     profile->setHttpCacheType(QWebEngineProfile::MemoryHttpCache);

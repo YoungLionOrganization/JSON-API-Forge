@@ -76,8 +76,8 @@ public:
     void fetchDatabases(const QString &project);
     void fetchDatabaseRows(const QString &project, const QString &alias, const QString &table, int limit = 100,
                            int offset = 0);
-    void startCall(const QString &areaId, const QString &mode);
-    void createCallTicket(const QString &callId);
+    void startCall(const QString &areaId, const QString &mode, const QString &operation = {});
+    void createCallTicket(const QString &callId, const QString &operation = {});
     void fetchCalls(const QString &areaId);
     void cancelFileTransfers();
     void fetchAudit(const QString &project = {});

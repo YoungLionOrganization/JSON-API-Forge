@@ -9,6 +9,7 @@
 - Keep selected chat text when an incoming message refreshes a conversation at the bottom of the view.
 - Preserve SQL row-count guards and operation cache invalidation targets when compiling mutation graphs; reject malformed guard and invalidation values.
 - Add a native cross-component contract check that compares generated exampleApps transition graphs with their complete RPC operation definitions.
+- Correlate each call-start and ticket request independently so delayed failures from a previous space or earlier attempt cannot cancel a new call, including returning to the same space.
 - Keep these changes separate from the frozen v0.5.2 publication candidate.
 
 ## [0.5.2] — 2026-10-04

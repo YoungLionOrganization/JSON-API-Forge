@@ -171,6 +171,8 @@ private slots:
     void composerSupportsMultilineAndFilePaste();
     void composerWrapsAndRejectsEmptySend();
     void oldCallClientExplainsRequiredUpdate();
+    void staleCallFailureDoesNotCancelNewAreaCall_data();
+    void staleCallFailureDoesNotCancelNewAreaCall();
     void backgroundRefreshAndDownloadIntegrity();
     void liveServerContract();
 
@@ -891,6 +893,65 @@ void EditorUiTests::oldCallClientExplainsRequiredUpdate()
     }
     team.setCapabilities(capabilities({QStringLiteral("*")}));
     QVERIFY(availability->text().isEmpty());
+}
+
+void EditorUiTests::staleCallFailureDoesNotCancelNewAreaCall_data()
+{
+    QTest::addColumn<bool>("ticketFailure");
+    QTest::addColumn<bool>("returnToArea");
+    QTest::newRow("old-start-new-area") << false << false;
+    QTest::newRow("old-ticket-new-area") << true << false;
+    QTest::newRow("old-start-returned-area") << false << true;
+    QTest::newRow("old-ticket-returned-area") << true << true;
+}
+
+void EditorUiTests::staleCallFailureDoesNotCancelNewAreaCall()
+{
+    QFETCH(bool, ticketFailure);
+    QFETCH(bool, returnToArea);
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    int starts = 0;
+    int tickets = 0;
+    int oldTickets = 0;
+    server.respond = [&](const QByteArray &request) {
+        if (request.startsWith("POST /__forge/editor/v1/calls ")) {
+            ++starts;
+            if (starts == 1) {
+                return ticketFailure
+                    ? WorkspaceServer::Response{QByteArray("{\"id\":\"alpha-call\"}"), QByteArray("201 Created"), 0}
+                    : WorkspaceServer::Response{QByteArray("{\"detail\":\"Old area unavailable\"}"), QByteArray("503 Service Unavailable"), 150};
+            }
+            return WorkspaceServer::Response{QByteArray("{\"id\":\"beta-call\"}"), QByteArray("201 Created"), 350};
+        }
+        if (request.startsWith("POST /__forge/editor/v1/calls/alpha-call/ticket ")) {
+            ++oldTickets;
+            return WorkspaceServer::Response{QByteArray("{\"detail\":\"Old ticket unavailable\"}"), QByteArray("503 Service Unavailable"), 150};
+        }
+        if (request.startsWith("POST /__forge/editor/v1/calls/beta-call/ticket ")) { ++tickets; }
+        return WorkspaceServer::Response{};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    TeamWorkspace team(&api);
+    team.setCapabilities(capabilities({QStringLiteral("calls.start")}));
+    deliver(api, QStringLiteral("team-areas:*"), spaces());
+    auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
+    QSignalSpy failed(&api, &ApiClient::requestFailed);
+    QSignalSpy status(&team, &TeamWorkspace::statusMessage);
+    QVERIFY(QMetaObject::invokeMethod(&team, "startAudioCall"));
+    QVERIFY(waitUntil([&] { return starts == 1; }));
+    if (ticketFailure) { QVERIFY(waitUntil([&] { return oldTickets == 1; })); }
+    areas->setCurrentRow(1);
+    if (returnToArea) { areas->setCurrentRow(0); }
+    QVERIFY(QMetaObject::invokeMethod(&team, "startAudioCall"));
+    QVERIFY(waitUntil([&] { return starts == 2; }));
+    QVERIFY(waitUntil([&] { return !failed.isEmpty(); }));
+    QVERIFY(failed.first().at(0).toString().startsWith(ticketFailure ? QStringLiteral("team-call-ticket:alpha-call:")
+                                                                 : QStringLiteral("team-call:alpha:")));
+    QVERIFY(status.isEmpty());
+    QVERIFY(waitUntil([&] { return tickets == 1; }));
 }
 
 void EditorUiTests::backgroundRefreshAndDownloadIntegrity()

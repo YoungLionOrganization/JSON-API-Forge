@@ -68,6 +68,8 @@ private:
     void downloadFile(const QString &id);
     void joinCall();
     void startCall(const QString &mode);
+    void requestCallTicket();
+    void clearPendingCall();
     void refreshSpaceExtras();
     [[nodiscard]] QString currentAreaId() const;
     [[nodiscard]] QString projectScope() const;
@@ -75,6 +77,7 @@ private:
     void updateActions();
     void refreshProject();
     void requestMessages();
+    [[nodiscard]] bool acceptsCallOperation(const QString &operation) const;
 
     ApiClient *m_api = nullptr;
     QLabel *m_profile = nullptr;
@@ -99,6 +102,9 @@ private:
     QPushButton *m_joinCall = nullptr;
     QString m_pendingCallArea;
     QString m_pendingCallId;
+    QString m_pendingCallOperation;
+    QString m_pendingCallTicketOperation;
+    quint64 m_callRequestSerial = 0;
     QString m_pendingUploadArea;
     bool m_transferBusy = false;
     bool m_callDiscovery = false;
