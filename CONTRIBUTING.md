@@ -26,6 +26,13 @@ passwords, founder setup secrets, bearer sessions or call tickets. Native
 plugin changes must preserve path containment, no-symlink, digest, API-version,
 declared-permission and explicit-enable checks.
 
+For cross-component graph checks, set `FORGE_EDITOR_EXAMPLES_APP_ROOT` to the
+`app` directory of a separately checked-out exampleApps branch, then run
+`forge_editor_tests graphExamplesCompilerContract` from the native build.
+The check compiles every domain-transition graph and compares the entire
+resulting operation with its target RPC definition. It skips when the variable
+is absent; the Editor source distribution does not include the example apps.
+
 Pull requests should explain behavior, compatibility, security impact, tests
 and packaging impact. Contribution forks are permitted only within the narrow
 collaboration exception described by the project license.

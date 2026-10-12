@@ -72,6 +72,8 @@ private slots:
     void boundedZipDecoderPolicy();
     void cancellationStopsQueuedRetries();
     void graphModelPolicyAndCompiler();
+    void graphCompilerPreservesMutationGuards();
+    void graphExamplesCompilerContract();
     void graphCycleRollback();
     void graphCompilerRejectsDesignOnlyNodes();
     void pythonSdkSnippetPolicy();
@@ -1099,6 +1101,78 @@ void EditorCoreTests::graphModelPolicyAndCompiler()
     QCOMPARE(compiledOperation.value(QStringLiteral("name")).toString(), QStringLiteral("orders.lookup"));
     QCOMPARE(compiledOperation.value(QStringLiteral("permission")).toString(), QStringLiteral("orders.create"));
     QCOMPARE(compiledOperation.value(QStringLiteral("statements")).toArray().size(), 1);
+}
+
+void EditorCoreTests::graphCompilerPreservesMutationGuards()
+{
+    GraphModel graph;
+    const QJsonObject properties{{QStringLiteral("sql"), QStringLiteral("UPDATE orders SET state=:state WHERE id=:id AND deleted_at IS NULL")},
+                                 {QStringLiteral("params"), QJsonObject{{QStringLiteral("state"), QStringLiteral("$body.state")},
+                                                                      {QStringLiteral("id"), QStringLiteral("$body.id")}}},
+                                 {QStringLiteral("require_rowcount_min"), 1}, {QStringLiteral("require_rowcount_max"), 1}};
+    const auto mutation = graph.addNode(QStringLiteral("data.mutate"), QStringLiteral("Mutation"), QPointF(0, 0), properties);
+    const QJsonArray resources{QStringLiteral("orders")};
+    const QJsonArray operations{QStringLiteral("orders.report")};
+    const auto operation = graph.addNode(QStringLiteral("operation.call"), QStringLiteral("Operation"), QPointF(280, 0),
+        QJsonObject{{QStringLiteral("name"), QStringLiteral("orders.transition")},
+                    {QStringLiteral("invalidate_resources"), resources}, {QStringLiteral("invalidate_operations"), operations}});
+    QString error;
+    QVERIFY(graph.connectNodes(mutation, QStringLiteral("exec"), operation, QStringLiteral("exec"), &error));
+    auto compiled = graph.compiledFragment(&error).value(QStringLiteral("operations")).toArray().first().toObject();
+    const auto statement = compiled.value(QStringLiteral("statements")).toArray().first().toObject();
+    QCOMPARE(statement.value(QStringLiteral("require_rowcount_min")).toInt(-1), 1);
+    QCOMPARE(statement.value(QStringLiteral("require_rowcount_max")).toInt(-1), 1);
+    QCOMPARE(compiled.value(QStringLiteral("invalidate_resources")).toArray(), resources);
+    QCOMPARE(compiled.value(QStringLiteral("invalidate_operations")).toArray(), operations);
+    QVERIFY(compiled.value(QStringLiteral("transaction")).toBool());
+    for (const auto &bad : QJsonArray{-1, 1.5, QStringLiteral("1"), true}) {
+        auto invalid = properties;
+        invalid.insert(QStringLiteral("require_rowcount_min"), bad);
+        QVERIFY(graph.updateNode(mutation, QStringLiteral("Mutation"), invalid, &error));
+        QVERIFY(graph.compiledFragment(&error).isEmpty());
+        QVERIFY(error.contains(QStringLiteral("require_rowcount_min")));
+    }
+    QVERIFY(graph.updateNode(mutation, QStringLiteral("Mutation"), properties, &error));
+    for (const auto &bad : QJsonArray{QStringLiteral("orders"), QJsonArray{42}}) {
+        auto invalid = graph.node(operation).value(QStringLiteral("properties")).toObject();
+        invalid.insert(QStringLiteral("invalidate_resources"), bad);
+        QVERIFY(graph.updateNode(operation, QStringLiteral("Operation"), invalid, &error));
+        QVERIFY(graph.compiledFragment(&error).isEmpty());
+        QVERIFY(error.contains(QStringLiteral("invalidate_resources")));
+    }
+}
+
+void EditorCoreTests::graphExamplesCompilerContract()
+{
+    const auto root = qEnvironmentVariable("FORGE_EDITOR_EXAMPLES_APP_ROOT");
+    if (root.isEmpty()) { QSKIP("Set FORGE_EDITOR_EXAMPLES_APP_ROOT to run the exampleApps graph/RPC contract."); }
+    QDir app(root);
+    QVERIFY(app.exists());
+    int checked = 0;
+    for (const auto &directory : app.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const QDir project(app.filePath(directory));
+        QFile graphFile(project.filePath(QStringLiteral("graphs/domain-transition.forgegraph.json")));
+        if (!graphFile.exists()) { continue; }
+        QVERIFY(graphFile.open(QIODevice::ReadOnly));
+        GraphModel graph;
+        QString error;
+        QVERIFY2(graph.setDocument(QJsonDocument::fromJson(graphFile.readAll()).object(), &error), qPrintable(error));
+        const auto fragment = graph.compiledFragment(&error);
+        QVERIFY2(!fragment.isEmpty(), qPrintable(directory + QStringLiteral(": ") + error));
+        const auto compiled = fragment.value(QStringLiteral("operations")).toArray().first().toObject();
+        QFile operationFile(project.filePath(graph.document().value(QStringLiteral("target_document")).toString()));
+        QVERIFY(operationFile.open(QIODevice::ReadOnly));
+        const auto operations = QJsonDocument::fromJson(operationFile.readAll()).object().value(QStringLiteral("operations")).toArray();
+        QJsonObject expected;
+        for (const auto &operation : operations) {
+            if (operation.toObject().value(QStringLiteral("name")) == compiled.value(QStringLiteral("name"))) { expected = operation.toObject(); break; }
+        }
+        QVERIFY2(!expected.isEmpty(), qPrintable(directory));
+        QCOMPARE(compiled, expected);
+        ++checked;
+    }
+    QVERIFY2(checked > 0, "No domain-transition graph fixtures were found.");
+    qInfo("Verified %d generated graph/RPC contracts", checked);
 }
 
 void EditorCoreTests::graphCycleRollback()

@@ -28,6 +28,7 @@
 #include <QPlainTextEdit>
 #include <QTabWidget>
 #include <QSettings>
+#include <QScrollBar>
 #include <QSharedPointer>
 #include <QSignalSpy>
 #include <QSplitter>
@@ -150,6 +151,8 @@ private slots:
     void repeatedGraphModePreservesEdits();
     void openingDocumentDoesNotSerializePreviousMode();
     void visualPropertyTypesAndPalette();
+    void visualPreservesLargeIntegers();
+    void visualRejectsMultiplePropertyValues();
     void visualNestedEditsUndoAndReorder();
     void visualStructuredAndNewPropertyDialogs();
     void spacesExplainAvailabilityAndKeepComposerVisible();
@@ -164,6 +167,7 @@ private slots:
     void founderWildcardPermissions();
     void restrictedNotesCarryReaderRank();
     void conversationKeepsSelectionAndEscapesContent();
+    void conversationRefreshKeepsSelectedMessageAtBottom();
     void composerSupportsMultilineAndFilePaste();
     void composerWrapsAndRejectsEmptySend();
     void oldCallClientExplainsRequiredUpdate();
@@ -335,6 +339,41 @@ void EditorUiTests::visualPropertyTypesAndPalette()
     designer.setDocument(QJsonObject{});
     palette->itemDoubleClicked(palette->item(0));
     QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().size(), 1);
+}
+
+void EditorUiTests::visualPreservesLargeIntegers()
+{
+    VisualDesigner designer;
+    const auto original = QJsonDocument::fromJson(QByteArray("{\"id\":9223372036854775807,\"negative\":-9223372036854775808,\"ratio\":0.125}")).object();
+    designer.setDocument(original);
+    QCOMPARE(propertyValue(&designer, QStringLiteral("id"))->text(), QStringLiteral("9223372036854775807"));
+    QCOMPARE(propertyValue(&designer, QStringLiteral("negative"))->text(), QStringLiteral("-9223372036854775808"));
+    QCOMPARE(propertyValue(&designer, QStringLiteral("ratio"))->text(), QStringLiteral("0.125"));
+    propertyValue(&designer, QStringLiteral("id"))->setText(QStringLiteral("9007199254740993"));
+    QCOMPARE(designer.document().value(QStringLiteral("id")).toInteger(), qint64(9007199254740993LL));
+    designer.undo();
+    QCOMPARE(designer.document(), original);
+    designer.redo();
+    QCOMPARE(propertyValue(&designer, QStringLiteral("id"))->text(), QStringLiteral("9007199254740993"));
+}
+
+void EditorUiTests::visualRejectsMultiplePropertyValues()
+{
+    VisualDesigner designer;
+    const QJsonObject original{{QStringLiteral("enabled"), true}, {QStringLiteral("count"), 5}};
+    designer.setDocument(original);
+    QSignalSpy errors(&designer, &VisualDesigner::statusMessage);
+    propertyValue(&designer, QStringLiteral("enabled"))->setText(QStringLiteral("false,\"extra\":42"));
+    QCOMPARE(designer.document(), original);
+    QCOMPARE(errors.size(), 1);
+    propertyValue(&designer, QStringLiteral("count"))->setText(QStringLiteral("3,\"value\":7"));
+    QCOMPARE(designer.document(), original);
+    QCOMPARE(errors.size(), 2);
+    propertyValue(&designer, QStringLiteral("count"))->setText(QStringLiteral("3,7"));
+    QCOMPARE(designer.document(), original);
+    QCOMPARE(errors.size(), 3);
+    propertyValue(&designer, QStringLiteral("enabled"))->setText(QStringLiteral(" false "));
+    QVERIFY(!designer.document().value(QStringLiteral("enabled")).toBool());
 }
 
 void EditorUiTests::visualNestedEditsUndoAndReorder()
@@ -763,6 +802,23 @@ void EditorUiTests::conversationKeepsSelectionAndEscapesContent()
     QCOMPARE(links.first().first().toString(), QStringLiteral("test-id"));
     view.clearConversation();
     QVERIFY(view.setConversation({}, {}));
+}
+
+void EditorUiTests::conversationRefreshKeepsSelectedMessageAtBottom()
+{
+    ChatView view;
+    view.resize(700, 500);
+    view.show();
+    QJsonArray records{QJsonObject{{QStringLiteral("body"), QStringLiteral("Copy this message")}}};
+    QVERIFY(view.setConversation(records, {}));
+    QVERIFY(waitUntil([&] { return view.verticalScrollBar()->value() == view.verticalScrollBar()->maximum(); }));
+    auto cursor = view.document()->find(QStringLiteral("Copy this message"));
+    QVERIFY(!cursor.isNull());
+    view.setTextCursor(cursor);
+    records.append(QJsonObject{{QStringLiteral("body"), QStringLiteral("New incoming message")}});
+    QVERIFY(view.setConversation(records, {}));
+    QCOMPARE(view.textCursor().selectedText(), QStringLiteral("Copy this message"));
+    QVERIFY(waitUntil([&] { return view.verticalScrollBar()->value() == view.verticalScrollBar()->maximum(); }));
 }
 
 void EditorUiTests::composerSupportsMultilineAndFilePaste()

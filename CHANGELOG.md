@@ -5,6 +5,10 @@
 - Show Python interpreter startup errors immediately and allow subsequent SDK checks instead of remaining stuck in the running state.
 - Generate the explicit loopback HTTP opt-in for local Python SDK integrations and health checks while retaining HTTPS requirements for remote endpoints.
 - Correct the install command to use the independent `json-api-forge-client` package, including YoungLion/DDM extras.
+- Preserve exact signed 64-bit JSON integers in Visual properties and reject extra values or fields in a single property input.
+- Keep selected chat text when an incoming message refreshes a conversation at the bottom of the view.
+- Preserve SQL row-count guards and operation cache invalidation targets when compiling mutation graphs; reject malformed guard and invalidation values.
+- Add a native cross-component contract check that compares generated exampleApps transition graphs with their complete RPC operation definitions.
 - Keep these changes separate from the frozen v0.5.2 publication candidate.
 
 ## [0.5.2] — 2026-10-04
