@@ -90,6 +90,8 @@ The async control-plane client discards an authentication response with `ForgeSe
 
 `ForgeCluster` and `AsyncForgeCluster` provide deterministic routing, circuit breakers, bounded bulk work and idempotency-gated failover across multiple Forge endpoints.
 
+Cluster shutdown attempts every client close and reports the first error after cleanup finishes. Async shutdown also finishes cleanup before propagating caller cancellation. Bulk and health operations cancel and drain their owned siblings before returning a cancelled result; worker/item counts and integer routing policies are checked before work starts.
+
 YoungLion/DDM adapters remain optional:
 
 ```bash

@@ -12,6 +12,7 @@ from enum import Enum
 from itertools import islice
 from typing import Any, Generic, TypeVar
 
+from ._io import wait_owned
 from .client import AsyncForgeClient, ForgeClient, _route, _segment
 from .errors import ForgeClusterUnavailable, ForgeHTTPError, ForgeTransportError
 from .models import ForgeResponse
@@ -39,7 +40,7 @@ class ForgeEndpoint:
     def __post_init__(self) -> None:
         if not self.name or len(self.name) > 64 or any(character in self.name for character in "\r\n\0"):
             raise ValueError("endpoint name is invalid")
-        if not 1 <= self.weight <= 100:
+        if type(self.weight) is not int or not 1 <= self.weight <= 100:
             raise ValueError("endpoint weight must be between 1 and 100")
 
 
@@ -49,7 +50,7 @@ class CircuitBreakerPolicy:
     recovery_seconds: float = 15.0
 
     def __post_init__(self) -> None:
-        if not 1 <= self.failure_threshold <= 100:
+        if type(self.failure_threshold) is not int or not 1 <= self.failure_threshold <= 100:
             raise ValueError("failure_threshold must be between 1 and 100")
         if not 0 <= self.recovery_seconds <= 3600:
             raise ValueError("recovery_seconds must be between 0 and 3600")
@@ -84,12 +85,25 @@ def _failover_permitted(method: str, options: Mapping[str, Any]) -> bool:
 
 
 def _bounded_values(values: Iterable[T], maximum: int) -> list[T]:
-    if not 1 <= maximum <= 100_000:
+    if type(maximum) is not int or not 1 <= maximum <= 100_000:
         raise ValueError("max_items must be between 1 and 100000")
     result = list(islice(values, maximum + 1))
     if len(result) > maximum:
         raise ValueError(f"bulk input exceeds max_items={maximum}")
     return result
+
+
+async def _gather_owned(tasks: Sequence[asyncio.Task[T]]) -> list[T]:
+    try:
+        return list(await asyncio.gather(*tasks))
+    except BaseException:
+        # A cancelled item makes gather return before its siblings finish.
+        # Cancel once, then shield/drain cleanup even if the caller cancels again.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await wait_owned(asyncio.gather(*tasks, return_exceptions=True))
+        raise
 
 
 class ForgeCluster:
@@ -214,9 +228,9 @@ class ForgeCluster:
         idempotency_key: Callable[[int, Mapping[str, Any]], str | None] | None = None,
         routing_key: Callable[[int, Mapping[str, Any]], str | None] | None = None,
     ) -> list[BulkResult[ForgeResponse[Any]]]:
-        values = [dict(payload) for payload in _bounded_values(payloads, max_items)]
-        if not 1 <= max_workers <= 64:
+        if type(max_workers) is not int or not 1 <= max_workers <= 64:
             raise ValueError("max_workers must be between 1 and 64")
+        values = [dict(payload) for payload in _bounded_values(payloads, max_items)]
         results: list[BulkResult[ForgeResponse[Any]] | None] = [None] * len(values)
 
         def submit(index: int) -> ForgeResponse[Any]:
@@ -249,8 +263,15 @@ class ForgeCluster:
         return result
 
     def close(self) -> None:
+        first_error: Exception | None = None
         for client in self._clients.values():
-            client.close()
+            try:
+                client.close()
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
 
     def __enter__(self) -> ForgeCluster:
         return self
@@ -384,15 +405,7 @@ class AsyncForgeCluster:
                     return BulkResult(index=index, error=exc)
 
         tasks = [asyncio.create_task(run(index, operation)) for index, operation in enumerate(bounded_operations)]
-        try:
-            return list(await asyncio.gather(*tasks))
-        except BaseException:
-            # A cancelled item makes gather return before its siblings finish.
-            # Own and drain them so mutations cannot continue after bulk exits.
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            raise
+        return await _gather_owned(tasks)
 
     async def health_all(self) -> dict[str, ForgeResponse[Any] | Exception]:
         async def health(endpoint: ForgeEndpoint):
@@ -401,10 +414,13 @@ class AsyncForgeCluster:
             except Exception as exc:
                 return endpoint.name, exc
 
-        return dict(await asyncio.gather(*(health(endpoint) for endpoint in self.endpoints)))
+        return dict(await _gather_owned([asyncio.create_task(health(endpoint)) for endpoint in self.endpoints]))
 
     async def aclose(self) -> None:
-        await asyncio.gather(*(client.aclose() for client in self._clients.values()))
+        results = await wait_owned(asyncio.gather(*(client.aclose() for client in self._clients.values()), return_exceptions=True))
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
 
     async def __aenter__(self) -> AsyncForgeCluster:
         return self

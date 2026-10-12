@@ -11,11 +11,16 @@ _T = TypeVar("_T")
 async def run_io(function: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
     """Run blocking IO without abandoning owned files when the caller cancels."""
     worker = asyncio.create_task(asyncio.to_thread(partial(function, *args, **kwargs)))
+    return await wait_owned(worker)
+
+
+async def wait_owned(worker: asyncio.Future[_T]) -> _T:
+    """Finish owned cleanup before returning caller cancellation."""
     try:
         return await asyncio.shield(worker)
     except asyncio.CancelledError:
-        # Thread cancellation cannot stop an OS operation. Drain it before an
-        # enclosing context closes its handle, even if cancellation repeats.
+        # An owned operation must finish before its context can return or close
+        # its resources, even if cancellation repeats during cleanup.
         while not worker.done():
             try:
                 await asyncio.shield(worker)
