@@ -102,6 +102,19 @@ public:
     QUrl url() const { return QUrl(QStringLiteral("http://127.0.0.1:%1").arg(serverPort())); }
 };
 
+QByteArray requestHeader(const QByteArray &request, const QByteArray &name)
+{
+    const auto headerEnd = request.indexOf("\r\n\r\n");
+    if (headerEnd < 0) { return {}; }
+    for (const auto &line : request.left(headerEnd).split('\n')) {
+        const auto colon = line.indexOf(':');
+        if (colon > 0 && line.left(colon).compare(name, Qt::CaseInsensitive) == 0) {
+            return line.mid(colon + 1).trimmed();
+        }
+    }
+    return {};
+}
+
 QJsonObject capabilities(const QStringList &permissions)
 {
     QJsonArray values;
@@ -146,6 +159,8 @@ private slots:
     void sidebarReclaimsSpace();
     void sidebarResponsivePreference();
     void compactTeamKeepsNavigation();
+    void credentialHeaderParsingPreservesTokenCase_data();
+    void credentialHeaderParsingPreservesTokenCase();
     void disconnectRevokesSession();
     void repeatedVisualModePreservesEdits();
     void repeatedGraphModePreservesEdits();
@@ -256,6 +271,26 @@ void EditorUiTests::compactTeamKeepsNavigation()
     QVERIFY(window.m_sidebarButton->isVisible());
 }
 
+void EditorUiTests::credentialHeaderParsingPreservesTokenCase_data()
+{
+    QTest::addColumn<QByteArray>("headerName");
+    QTest::newRow("title-case") << QByteArray("Authorization");
+    QTest::newRow("lower-case") << QByteArray("authorization");
+    QTest::newRow("mixed-case") << QByteArray("aUtHoRiZaTiOn");
+}
+
+void EditorUiTests::credentialHeaderParsingPreservesTokenCase()
+{
+    QFETCH(QByteArray, headerName);
+    const auto expected = QByteArray("Bearer ") + TestSession;
+    const auto request = QByteArray("GET / HTTP/1.1\r\n") + headerName + QByteArray(": ")
+        + expected + QByteArray("\r\n\r\nAuthorization: body-must-not-be-a-header");
+    QCOMPARE(requestHeader(request, QByteArray("AUTHORIZATION")), expected);
+    QVERIFY(requestHeader(request, QByteArray("authorization")) != QByteArray("Bearer ") + TestSession.toLower());
+    const auto bodyOnly = QByteArray("GET / HTTP/1.1\r\nHost: localhost\r\n\r\nAuthorization: ") + expected;
+    QVERIFY(requestHeader(bodyOnly, QByteArray("authorization")).isEmpty());
+}
+
 void EditorUiTests::disconnectRevokesSession()
 {
     WorkspaceServer server;
@@ -273,11 +308,7 @@ void EditorUiTests::disconnectRevokesSession()
     QVERIFY(waitUntil([&] { return (server.requests.size()) == (1); }));
     QCOMPARE(server.requests.size(), 1);
     QVERIFY(server.requests.first().startsWith("POST /__forge/editor/v1/auth/logout "));
-    QByteArray authorization;
-    for (const auto &line : server.requests.first().split('\n')) {
-        if (line.left(14).toLower() == QByteArray("authorization:")) { authorization = line.mid(14).trimmed(); }
-    }
-    QCOMPARE(authorization, QByteArray("Bearer ") + TestSession);
+    QCOMPARE(requestHeader(server.requests.first(), QByteArray("Authorization")), QByteArray("Bearer ") + TestSession);
     QVERIFY(!window.m_api->isConfigured());
     QVERIFY(window.m_disconnectButton->isHidden());
 }
@@ -1058,7 +1089,7 @@ void EditorUiTests::staleSessionResponseIsDiscarded()
     QVERIFY(!QFile::exists(target));
     api.fetchProfile();
     QVERIFY(waitUntil([&] { return server.requests.size() == 2; }));
-    QVERIFY(server.requests.last().contains(QByteArray("Authorization: Bearer ") + replacement));
+    QCOMPARE(requestHeader(server.requests.last(), QByteArray("Authorization")), QByteArray("Bearer ") + replacement);
 }
 
 void EditorUiTests::backgroundRefreshAndDownloadIntegrity()
