@@ -15,7 +15,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
-from ._io import run_io
+from ._io import run_io, wait_owned
 from .errors import ForgeHTTPError, ForgeResponseTooLarge, ForgeTransportError, safe_error_text
 from .models import ForgeResponse, JsonObject, RequestAttempt
 from .options import RetryPolicy
@@ -252,16 +252,35 @@ class _AsyncFileStream(httpx.AsyncByteStream):
             yield chunk
 
 
+class _OwnedResponseStream(httpx.AsyncByteStream):
+    """Finish releasing the HTTP connection even when cancellation repeats."""
+
+    def __init__(self, stream: httpx.AsyncByteStream):
+        self._stream = stream
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        async for chunk in self._stream:
+            yield chunk
+
+    async def aclose(self) -> None:
+        # httpx marks a Response closed before awaiting the underlying stream.
+        # Shield here, including its automatic close at the end of body reads;
+        # a later Response.aclose() cannot resume an interrupted first close.
+        await wait_owned(asyncio.create_task(self._stream.aclose()))
+
+
 @asynccontextmanager
 async def _stream_async(client: httpx.AsyncClient, method: str, path: str, **kwargs: Any) -> AsyncIterator[httpx.Response]:
     if kwargs.get("files") is None:
         async with client.stream(method, path, **kwargs) as response:
+            response.stream = _OwnedResponseStream(response.stream)
             yield response
         return
     # Request assembly also seeks/fstats files to compute Content-Length.
     request = await run_io(client.build_request, method, path, **kwargs)
     request.stream = _AsyncFileStream(request.stream)
     response = await client.send(request, stream=True)
+    response.stream = _OwnedResponseStream(response.stream)
     try:
         yield response
     finally:
@@ -677,7 +696,7 @@ class AsyncForgeClient:
         return await self.request("POST", f"api/{_segment(project)}/v1/{_route(resource)}/_batch", json_body=batch_payload(payloads))
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        await wait_owned(asyncio.create_task(self._client.aclose()))
 
     async def __aenter__(self) -> AsyncForgeClient:
         return self
