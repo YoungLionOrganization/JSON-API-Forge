@@ -187,7 +187,7 @@ TeamWorkspace::TeamWorkspace(ApiClient *api, QWidget *parent)
             [this](const QString &operation, int status, const QString &message, const QString &category,
                    const QString &, bool outcomeUncertain) {
                 if (category == QStringLiteral("canceled") && !operation.startsWith(QStringLiteral("team-attachment-"))) { return; }
-                if (!acceptsCallOperation(operation)) { return; }
+                if (!acceptsWorkspaceOperation(operation)) { return; }
                 handleError(operation, status, message);
                 if (operation.startsWith(QStringLiteral("team-")) && outcomeUncertain) {
                     m_feedback->setText(message + QStringLiteral(" Check whether the change reached the server before retrying."));
@@ -734,7 +734,8 @@ void TeamWorkspace::requestMessages()
     const auto area = currentAreaId();
     if (!area.isEmpty() && m_messagesLoading != area && permits(QStringLiteral("messages.read"))) {
         m_messagesLoading = area;
-        m_api->fetchMessages(area);
+        m_messagesOperation = QStringLiteral("team-messages:%1:request:%2").arg(area).arg(++m_messageRequestSerial);
+        m_api->fetchMessages(area, m_messagesOperation);
     }
 }
 
@@ -781,6 +782,7 @@ void TeamWorkspace::reset()
     m_pendingMessageArea.clear();
     m_pendingMessageBody.clear();
     m_messagesLoading.clear();
+    m_messagesOperation.clear();
     m_messagesRefreshNeeded.clear();
     m_pendingNoteProject.clear();
     m_pendingNoteTitle.clear();
@@ -832,6 +834,7 @@ void TeamWorkspace::selectArea()
         ? QStringLiteral("# ") + m_areas->currentItem()->text().section(u'\n', 0, 0) : QStringLiteral("# Choose a space"));
     m_attachments->clear();
     m_messagesLoading.clear();
+    m_messagesOperation.clear();
     m_messagesRefreshNeeded.clear();
     updateActions();
     if (!area.isEmpty()) {
@@ -1398,9 +1401,10 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
         return;
     }
     if (operation.startsWith(QStringLiteral("team-messages:"))) {
-        const auto area = operation.mid(QStringLiteral("team-messages:").size());
-        if (m_messagesLoading == area) { m_messagesLoading.clear(); }
-        if (area != currentAreaId()) { return; }
+        if (!acceptsWorkspaceOperation(operation)) { return; }
+        const auto area = m_messagesLoading;
+        m_messagesLoading.clear();
+        m_messagesOperation.clear();
         const auto records = payload.value(QStringLiteral("messages")).toArray();
         const bool changed = records != m_messageRecords;
         m_messageRecords = records;
@@ -1595,8 +1599,12 @@ void TeamWorkspace::handleJson(const QString &operation, const QJsonObject &payl
     }
 }
 
-bool TeamWorkspace::acceptsCallOperation(const QString &operation) const
+bool TeamWorkspace::acceptsWorkspaceOperation(const QString &operation) const
 {
+    if (operation.startsWith(QStringLiteral("team-messages:"))) {
+        return !m_messagesOperation.isEmpty() && operation == m_messagesOperation
+            && m_messagesLoading == currentAreaId();
+    }
     if (operation.startsWith(QStringLiteral("team-call:"))) {
         return !m_pendingCallArea.isEmpty() && m_pendingCallArea == currentAreaId()
             && operation == m_pendingCallOperation;
@@ -1610,7 +1618,7 @@ bool TeamWorkspace::acceptsCallOperation(const QString &operation) const
 
 void TeamWorkspace::handleError(const QString &operation, int statusCode, const QString &message)
 {
-    if (!acceptsCallOperation(operation)) { return; }
+    if (!acceptsWorkspaceOperation(operation)) { return; }
     if (operation.startsWith(QStringLiteral("team-attachment-"))) {
         m_transferBusy = false;
         m_pendingUploadArea.clear();
@@ -1635,7 +1643,7 @@ void TeamWorkspace::handleError(const QString &operation, int statusCode, const 
         m_pendingNoteProject.clear();
         updateActions();
     }
-    if (operation == QStringLiteral("team-messages:%1").arg(m_messagesLoading)) { m_messagesLoading.clear(); }
+    if (operation == m_messagesOperation) { m_messagesLoading.clear(); m_messagesOperation.clear(); }
     if (!operation.startsWith(QStringLiteral("team-"))) {
         return;
     }

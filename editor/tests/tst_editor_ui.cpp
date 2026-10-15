@@ -162,6 +162,8 @@ private slots:
     void workerRefreshRespectsPermissionsAndGlobalScope();
     void failedMessagePreservesDraftAndPreventsDuplicatePosts();
     void workspaceIgnoresStaleResponsesAndKeepsAreaDrafts();
+    void messageSnapshotCannotOverwriteReturnedSpace_data();
+    void messageSnapshotCannotOverwriteReturnedSpace();
     void noteAcknowledgementPreservesNewerEdits();
     void resetClearsSessionData();
     void founderWildcardPermissions();
@@ -173,6 +175,8 @@ private slots:
     void oldCallClientExplainsRequiredUpdate();
     void staleCallFailureDoesNotCancelNewAreaCall_data();
     void staleCallFailureDoesNotCancelNewAreaCall();
+    void staleSessionResponseIsDiscarded_data();
+    void staleSessionResponseIsDiscarded();
     void backgroundRefreshAndDownloadIntegrity();
     void liveServerContract();
 
@@ -662,11 +666,18 @@ void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
 {
     WorkspaceServer server;
     QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+    server.respond = [](const QByteArray &request) {
+        if (request.contains("/areas?")) {
+            return WorkspaceServer::Response{QJsonDocument(spaces()).toJson(QJsonDocument::Compact)};
+        }
+        return WorkspaceServer::Response{request.contains("/areas/beta/messages?")
+            ? QJsonDocument(messages(QStringLiteral("correct area"))).toJson(QJsonDocument::Compact) : QByteArray("{}")};
+    };
     ApiClient api;
     QString error;
     QVERIFY(api.configure(server.url(), TestSession, true, &error));
     TeamWorkspace team(&api);
-    team.setCapabilities(capabilities({QStringLiteral("areas.read"), QStringLiteral("messages.write")}));
+    team.setCapabilities(capabilities({QStringLiteral("areas.read"), QStringLiteral("messages.read"), QStringLiteral("messages.write")}));
     team.setProject(QStringLiteral("Alpha"));
     deliver(api, QStringLiteral("team-areas:Alpha"), spaces());
     auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
@@ -677,7 +688,7 @@ void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
     composer->setPlainText(QStringLiteral("Beta draft"));
     deliver(api, QStringLiteral("team-messages:alpha"), messages(QStringLiteral("wrong area")));
     QCOMPARE(messageList->messageCount(), 0);
-    deliver(api, QStringLiteral("team-messages:beta"), messages(QStringLiteral("correct area")));
+    QVERIFY(waitUntil([&] { return messageList->messageCount() == 1; }));
     QCOMPARE(messageList->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("correct area"));
     areas->setCurrentRow(0);
     QCOMPARE(composer->toPlainText(), QStringLiteral("Alpha draft"));
@@ -690,6 +701,49 @@ void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
     QCOMPARE(team.findChild<QTreeWidget *>(QStringLiteral("noteList"))->topLevelItemCount(), 0);
     deliver(api, QStringLiteral("team-attachments:alpha"), QJsonObject{{QStringLiteral("attachments"), QJsonArray{QJsonObject{}}}});
     QCOMPARE(team.findChild<QTreeWidget *>(QStringLiteral("attachmentList"))->topLevelItemCount(), 0);
+}
+
+void EditorUiTests::messageSnapshotCannotOverwriteReturnedSpace_data()
+{
+    QTest::addColumn<bool>("oldFailure");
+    QTest::newRow("old-snapshot") << false;
+    QTest::newRow("old-error") << true;
+}
+
+void EditorUiTests::messageSnapshotCannotOverwriteReturnedSpace()
+{
+    QFETCH(bool, oldFailure);
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    int alphaReads = 0;
+    server.respond = [&](const QByteArray &request) {
+        if (request.startsWith("GET /__forge/editor/v1/areas/alpha/messages?")) {
+            ++alphaReads;
+            const auto body = QJsonDocument(messages(alphaReads == 1 ? QStringLiteral("Old snapshot") : QStringLiteral("Current snapshot"))).toJson(QJsonDocument::Compact);
+            return WorkspaceServer::Response{body, oldFailure && alphaReads == 1 ? QByteArray("503 Service Unavailable") : QByteArray("200 OK"), alphaReads == 1 ? 250 : 10};
+        }
+        return WorkspaceServer::Response{};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    TeamWorkspace team(&api);
+    team.setCapabilities(capabilities({QStringLiteral("areas.read"), QStringLiteral("messages.read")}));
+    deliver(api, QStringLiteral("team-areas:*"), spaces());
+    auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
+    auto *view = team.findChild<ChatView *>(QStringLiteral("messageList"));
+    QSignalSpy status(&team, &TeamWorkspace::statusMessage);
+    EditorPreferences preferences;
+    preferences.safeGetRetries = 0;
+    api.applyPreferences(preferences);
+    QVERIFY(waitUntil([&] { return alphaReads == 1; }));
+    areas->setCurrentRow(1);
+    areas->setCurrentRow(0);
+    QVERIFY(waitUntil([&] { return alphaReads == 2 && view->messageCount() == 1; }));
+    QCOMPARE(view->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("Current snapshot"));
+    QTest::qWait(300);
+    QCOMPARE(view->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("Current snapshot"));
+    QVERIFY(status.isEmpty());
 }
 
 void EditorUiTests::noteAcknowledgementPreservesNewerEdits()
@@ -952,6 +1006,59 @@ void EditorUiTests::staleCallFailureDoesNotCancelNewAreaCall()
                                                                  : QStringLiteral("team-call:alpha:")));
     QVERIFY(status.isEmpty());
     QVERIFY(waitUntil([&] { return tickets == 1; }));
+}
+
+void EditorUiTests::staleSessionResponseIsDiscarded_data()
+{
+    QTest::addColumn<QString>("responseKind");
+    QTest::newRow("expired-profile") << QStringLiteral("unauthorized");
+    QTest::newRow("old-profile") << QStringLiteral("profile");
+    QTest::newRow("old-login") << QStringLiteral("login");
+    QTest::newRow("old-download") << QStringLiteral("download");
+    QTest::newRow("expired-download") << QStringLiteral("download-unauthorized");
+}
+
+void EditorUiTests::staleSessionResponseIsDiscarded()
+{
+    QFETCH(QString, responseKind);
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    server.respond = [&](const QByteArray &request) {
+        if (request.contains("/auth/login ")) {
+            return WorkspaceServer::Response{QByteArray("{\"access_token\":\"") + TestSession + QByteArray("\"}"), QByteArray("200 OK"), 120};
+        }
+        if (responseKind.endsWith(QStringLiteral("unauthorized"))) {
+            return WorkspaceServer::Response{QByteArray("{\"detail\":\"Old session expired\"}"), QByteArray("401 Unauthorized"), 120};
+        }
+        return WorkspaceServer::Response{request.contains("/attachments/") ? QByteArray("old private file") : QByteArray("{\"display_name\":\"Old account\"}"), QByteArray("200 OK"), 120};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto target = directory.filePath(QStringLiteral("private.txt"));
+    QSignalSpy received(&api, &ApiClient::jsonReceived);
+    QSignalSpy failed(&api, &ApiClient::requestFailed);
+    QSignalSpy downloaded(&api, &ApiClient::fileDownloaded);
+    QSignalSpy activity(&api, &ApiClient::connectionActivityChanged);
+    if (responseKind.startsWith(QStringLiteral("download"))) { api.downloadAttachment(QStringLiteral("old-file"), target, 1024); }
+    else if (responseKind == QStringLiteral("login")) { api.login(QStringLiteral("old-account"), QStringLiteral("password")); }
+    else { api.fetchProfile(); }
+    QVERIFY(waitUntil([&] { return server.requests.size() == 1; }));
+    auto replacement = TestSession;
+    replacement[replacement.size() - 1] = 'z';
+    QVERIFY(api.setSessionToken(replacement, &error));
+    QVERIFY(waitUntil([&] { return !activity.isEmpty() && !activity.last().at(0).toBool(); }));
+    QTest::qWait(100);
+    QVERIFY(api.isConfigured());
+    QVERIFY(received.isEmpty());
+    QVERIFY(failed.isEmpty());
+    QVERIFY(downloaded.isEmpty());
+    QVERIFY(!QFile::exists(target));
+    api.fetchProfile();
+    QVERIFY(waitUntil([&] { return server.requests.size() == 2; }));
+    QVERIFY(server.requests.last().contains(QByteArray("Authorization: Bearer ") + replacement));
 }
 
 void EditorUiTests::backgroundRefreshAndDownloadIntegrity()

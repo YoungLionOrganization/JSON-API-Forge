@@ -65,7 +65,7 @@ public:
     void fetchAreas(const QString &project);
     void createArea(const QString &project, const QString &name, const QString &description,
                     const QString &visibility, int minimumRank);
-    void fetchMessages(const QString &areaId);
+    void fetchMessages(const QString &areaId, const QString &operation = {});
     void postMessage(const QString &areaId, const QString &body, bool announcement = false);
     void fetchAttachments(const QString &areaId);
     void uploadAttachment(const QString &areaId, const QString &filePath, qsizetype maxBytes);
@@ -101,6 +101,7 @@ signals:
 
 private:
     enum class RequestProfile { Normal, Authentication, Background };
+    void invalidatePendingResponses();
     void postAttachment(const QString &areaId, const QString &name, const QByteArray &snapshot);
 
     void send(const QString &operation, QNetworkAccessManager::Operation method, const QStringList &pathSegments,

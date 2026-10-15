@@ -77,7 +77,7 @@ private:
     void updateActions();
     void refreshProject();
     void requestMessages();
-    [[nodiscard]] bool acceptsCallOperation(const QString &operation) const;
+    [[nodiscard]] bool acceptsWorkspaceOperation(const QString &operation) const;
 
     ApiClient *m_api = nullptr;
     QLabel *m_profile = nullptr;
@@ -134,6 +134,8 @@ private:
     QString m_pendingMessageArea;
     QString m_pendingMessageBody;
     QString m_messagesLoading;
+    QString m_messagesOperation;
+    quint64 m_messageRequestSerial = 0;
     QString m_messagesRefreshNeeded;
     QString m_pendingNoteProject;
     QString m_pendingNoteTitle;
