@@ -36,6 +36,45 @@ MAX_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_FILE_BYTES = 16 * 1024 * 1024
 
 
+def _check_delivery_path(path: Path) -> None:
+    """Fail closed for local state even when Git/manifest checks ignore it."""
+    parts = tuple(part.casefold() for part in path.relative_to(ROOT).parts)
+    generated = {
+        ".git",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".venv",
+        "venv",
+        "node_modules",
+        "build",
+        "dist",
+        "htmlcov",
+    }
+    name = parts[-1]
+    if (
+        any(part in generated or part.endswith(".egg-info") for part in parts)
+        or (name.startswith(".env") and name != ".env.example")
+        or name.endswith(
+            (
+                ".pem",
+                ".key",
+                ".p12",
+                ".pfx",
+                ".db",
+                ".sqlite",
+                ".sqlite3",
+                ".log",
+                ".pyc",
+                ".pyo",
+            )
+        )
+        or any(marker in name for marker in (".db-", ".sqlite-", ".sqlite3-"))
+    ):
+        raise RuntimeError(f"bundle source contains private or generated state: {path}")
+
+
 def _is_link(metadata: os.stat_result) -> bool:
     # Windows junctions are reparse points but are not reported as symlinks.
     return stat.S_ISLNK(metadata.st_mode) or bool(
@@ -69,6 +108,7 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
     for count, path in enumerate(app_root.rglob("*"), 1):
         if count > MAX_FILES * 2:
             raise RuntimeError("bundle source contains too many directory entries")
+        _check_delivery_path(path)
         if _is_link(path.lstat()):
             raise RuntimeError(f"bundle source contains symlinks or junctions: {path}")
         if path.is_file():
@@ -89,6 +129,7 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
     names = set()
     total = 0
     for path in paths:
+        _check_delivery_path(path)
         for parent in path.parents:
             if parent == ROOT:
                 break
@@ -126,6 +167,8 @@ def build(output: Path) -> None:
         raise RuntimeError("bundle output must not be inside app sources")
     output.parent.mkdir(parents=True, exist_ok=True)
     sources = _sources()
+    if any(output == path.resolve() for path, _, _ in sources):
+        raise RuntimeError("bundle output must not replace a delivery source")
     timestamp = datetime.fromtimestamp(
         min(max(_source_date_epoch(), 315_532_800), 4_354_819_198), tz=timezone.utc
     ).timetuple()[:6]

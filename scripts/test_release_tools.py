@@ -106,6 +106,15 @@ class ReleaseToolsTests(unittest.TestCase):
             with zipfile.ZipFile(self.root / "epoch.zip") as archive:
                 self.assertEqual(archive.infolist()[0].date_time[0], year)
 
+    def test_bundle_output_must_not_replace_delivery_sources(self):
+        for relative in ("README.md", "LICENSE", "scripts/install-example.sh"):
+            with self.subTest(output=relative):
+                output = self.root / relative
+                original = output.read_bytes()
+                with self.assertRaisesRegex(RuntimeError, "replace.*source"):
+                    bundle.build(output)
+                self.assertEqual(output.read_bytes(), original)
+
     @unittest.skipUnless(os.name == "nt", "Windows junction boundary")
     def test_windows_junction_sources_are_rejected(self):
         outside = self.root / "outside"
@@ -149,6 +158,58 @@ class ReleaseToolsTests(unittest.TestCase):
             bundle.build(output)
         self.assertEqual(output.read_bytes(), b"previous verified archive")
         self.assertFalse(list(self.root.glob("*.tmp")))
+
+    def test_private_runtime_sources_never_enter_delivery_archives(self):
+        output = self.root / "existing.zip"
+        for relative in (
+            ".env",
+            ".env.production",
+            "config/signing.key",
+            "config/client.p12",
+            "data/customer.db",
+            "data/customer.db-wal",
+            "data/customer.sqlite3",
+            "logs/server.log",
+            "__pycache__/worker.cpython-313.pyc",
+            ".git/config",
+            "node_modules/package/index.js",
+        ):
+            with self.subTest(source=relative):
+                source = self.root / "app/Test" / relative
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(b"synthetic private runtime content")
+                output.write_bytes(b"previous verified archive")
+                try:
+                    with self.assertRaisesRegex(RuntimeError, "private or generated"):
+                        bundle.build(output)
+                    self.assertEqual(output.read_bytes(), b"previous verified archive")
+                    self.assertFalse(list(self.root.glob("*.tmp")))
+                finally:
+                    source.unlink()
+                    parent = source.parent
+                    while parent != self.root / "app/Test":
+                        try:
+                            parent.rmdir()
+                        except OSError:
+                            break
+                        parent = parent.parent
+
+    def test_project_data_and_environment_templates_remain_copy_ready(self):
+        for relative in (".env.example", "data/seed.json", "config/public.pem.example"):
+            source = self.root / "app/Test" / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b"public fixture")
+        output = self.root / "templates.zip"
+        bundle.build(output)
+        with zipfile.ZipFile(output) as archive:
+            for relative in (
+                ".env.example",
+                "data/seed.json",
+                "config/public.pem.example",
+            ):
+                self.assertEqual(
+                    archive.read(f"app/Test/{relative}"), b"public fixture"
+                )
 
 
 if __name__ == "__main__":
