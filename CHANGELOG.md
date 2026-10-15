@@ -2,6 +2,7 @@
 
 ## Unreleased maintenance
 
+- Keep media and Editor attachment writes, flushes, output closure and publication off the event loop; drain owned work under repeated cancellation. Failed uploads remove partial objects, while completed metadata transactions retain their matching files if the caller disconnects.
 - Negotiate identity encoding for bounded HTTP sources/JWKS and reject encoded bodies before decoding; ignore non-finite Retry-After values and close recovered request circuits.
 - Reject unsafe checksum manifest records and linked/reparse-point source parents, pruning ignored build directories before exported-source traversal.
 - Keep Editor document lock acquisition, validation, atomic publication and release in one IO worker. Cancelled saves stop waiting for busy locks and drain owned work before releasing the write mutex; slow disk work no longer blocks the event loop.

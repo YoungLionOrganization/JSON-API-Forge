@@ -28,6 +28,7 @@ from .doctor import is_weak_secret
 from .editor_call_client import call_client_page, parse_ice_servers
 from .editor_database import browse_rows, database_catalog
 from .editor_identity import EDITOR_PERMISSIONS, EditorAccess, EditorIdentityStore, EditorPrincipal
+from .io_tasks import finish_io, flush_file
 from .protection import client_ip, host_allowed, ip_allowed, request_is_https
 from .runtime import ProjectRuntime
 from .settings import Settings
@@ -1175,36 +1176,58 @@ def register_editor_api(
         temporary = Path(temporary_name)
         digest = hashlib.sha256()
         size = 0
+        published = False
+        registered = False
+
+        def publish():
+            nonlocal published
+            os.replace(temporary, target)
+            published = True
+
+        async def register(content_type):
+            nonlocal registered
+            metadata = await store_for(request).register_attachment(
+                access,
+                area_id=area_id,
+                original_name=raw_name,
+                stored_name=stored_name,
+                content_type=content_type,
+                size=size,
+                sha256=digest.hexdigest(),
+            )
+            registered = True
+            return metadata
+
         try:
-            with os.fdopen(fd, "wb") as handle:
+            try:
+                handle = os.fdopen(fd, "wb")
+            except BaseException:
+                os.close(fd)
+                raise
+            try:
                 while chunk := await upload.read(1024 * 1024):
                     size += len(chunk)
                     if size > settings.editor_max_attachment_bytes:
                         raise HTTPException(status_code=413, detail="Attachment exceeds the server policy limit")
                     digest.update(chunk)
-                    handle.write(chunk)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, target)
+                    await finish_io(asyncio.to_thread(handle.write, chunk))
+                await finish_io(asyncio.to_thread(flush_file, handle))
+            finally:
+                await finish_io(asyncio.to_thread(handle.close))
+            await finish_io(upload.close())
+            await finish_io(asyncio.to_thread(publish))
             content_type = (upload.content_type or mimetypes.guess_type(raw_name)[0] or "application/octet-stream")[:160]
             if any(character in content_type for character in "\r\n\0"):
                 content_type = "application/octet-stream"
-            try:
-                metadata = await store_for(request).register_attachment(
-                    access,
-                    area_id=area_id,
-                    original_name=raw_name,
-                    stored_name=stored_name,
-                    content_type=content_type,
-                    size=size,
-                    sha256=digest.hexdigest(),
-                )
-            except BaseException:
-                target.unlink(missing_ok=True)
-                raise
+            metadata = await finish_io(register(content_type))
         finally:
-            temporary.unlink(missing_ok=True)
-            await upload.close()
+            try:
+                if published and not registered:
+                    target.unlink(missing_ok=True)
+            finally:
+                temporary.unlink(missing_ok=True)
+                if not upload.file.closed:
+                    await finish_io(upload.close())
         await store_for(request).audit(
             access.principal,
             "attachment.create",

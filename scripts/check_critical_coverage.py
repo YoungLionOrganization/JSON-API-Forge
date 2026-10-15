@@ -15,6 +15,7 @@ MODULE_FLOORS: dict[str, float] = {
     "framework/db.py": 80.0,
     "framework/events.py": 80.0,
     "framework/factory.py": 80.0,
+    "framework/io_tasks.py": 80.0,
     "framework/media.py": 80.0,
     "framework/mongo.py": 80.0,
     "framework/observability.py": 80.0,
