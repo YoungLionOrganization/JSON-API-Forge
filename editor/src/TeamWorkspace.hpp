@@ -68,6 +68,8 @@ private:
     void downloadFile(const QString &id);
     void joinCall();
     void startCall(const QString &mode);
+    void requestCallTicket();
+    void clearPendingCall();
     void refreshSpaceExtras();
     [[nodiscard]] QString currentAreaId() const;
     [[nodiscard]] QString projectScope() const;
@@ -75,6 +77,9 @@ private:
     void updateActions();
     void refreshProject();
     void requestMessages();
+    void requestAttachments();
+    void requestNotes();
+    [[nodiscard]] bool acceptsWorkspaceOperation(const QString &operation) const;
 
     ApiClient *m_api = nullptr;
     QLabel *m_profile = nullptr;
@@ -99,11 +104,17 @@ private:
     QPushButton *m_joinCall = nullptr;
     QString m_pendingCallArea;
     QString m_pendingCallId;
+    QString m_pendingCallOperation;
+    QString m_pendingCallTicketOperation;
+    quint64 m_callRequestSerial = 0;
     QString m_pendingUploadArea;
     bool m_transferBusy = false;
     bool m_callDiscovery = false;
     bool m_callClientReady = false;
     bool m_extrasLoading = false;
+    QString m_attachmentsOperation;
+    QString m_notesOperation;
+    quint64 m_listRequestSerial = 0;
     QTreeWidget *m_attachments = nullptr;
     QTreeWidget *m_databaseTree = nullptr;
     QTableWidget *m_rows = nullptr;
@@ -128,6 +139,8 @@ private:
     QString m_pendingMessageArea;
     QString m_pendingMessageBody;
     QString m_messagesLoading;
+    QString m_messagesOperation;
+    quint64 m_messageRequestSerial = 0;
     QString m_messagesRefreshNeeded;
     QString m_pendingNoteProject;
     QString m_pendingNoteTitle;

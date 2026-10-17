@@ -438,6 +438,22 @@ QJsonObject GraphModel::compiledFragment(QString *errorMessage) const
             if (properties.value(QStringLiteral("max_rows")).isDouble()) {
                 statement.insert(QStringLiteral("max_rows"), properties.value(QStringLiteral("max_rows")));
             }
+            for (const auto &key : {QStringLiteral("require_rowcount_min"), QStringLiteral("require_rowcount_max")}) {
+                if (!properties.contains(key)) { continue; }
+                const auto bound = properties.value(key);
+                if (!bound.isNull() && (!bound.isDouble() || bound.toInteger(-1) < 0 || QJsonValue(bound.toInteger(-1)) != bound)) {
+                    fail(errorMessage, QStringLiteral("SQL node %1 must be a nonnegative integer or null.").arg(key));
+                    return {};
+                }
+                statement.insert(key, bound);
+            }
+            if (!statement.value(QStringLiteral("require_rowcount_min")).isNull()
+                && !statement.value(QStringLiteral("require_rowcount_max")).isNull()
+                && statement.contains(QStringLiteral("require_rowcount_min")) && statement.contains(QStringLiteral("require_rowcount_max"))
+                && statement.value(QStringLiteral("require_rowcount_min")).toInteger() > statement.value(QStringLiteral("require_rowcount_max")).toInteger()) {
+                fail(errorMessage, QStringLiteral("SQL node require_rowcount_min cannot exceed require_rowcount_max."));
+                return {};
+            }
             statements.append(statement);
             hasExecute = hasExecute || mode == QStringLiteral("execute");
         } else if (type == QStringLiteral("python.call")) {
@@ -501,6 +517,21 @@ QJsonObject GraphModel::compiledFragment(QString *errorMessage) const
     }
     if (!operationProperties.value(QStringLiteral("summary")).toString().isEmpty()) {
         operation.insert(QStringLiteral("summary"), operationProperties.value(QStringLiteral("summary")));
+    }
+    for (const auto &key : {QStringLiteral("invalidate_resources"), QStringLiteral("invalidate_operations")}) {
+        if (!operationProperties.contains(key)) { continue; }
+        const auto targets = operationProperties.value(key);
+        if (!targets.isArray()) {
+            fail(errorMessage, QStringLiteral("Operation %1 must be an array of strings.").arg(key));
+            return {};
+        }
+        for (const auto &target : targets.toArray()) {
+            if (!target.isString()) {
+                fail(errorMessage, QStringLiteral("Operation %1 must be an array of strings.").arg(key));
+                return {};
+            }
+        }
+        operation.insert(key, targets);
     }
     if (!hooks.isEmpty()) {
         operation.insert(QStringLiteral("background_hooks"), hooks);

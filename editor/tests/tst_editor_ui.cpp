@@ -28,6 +28,7 @@
 #include <QPlainTextEdit>
 #include <QTabWidget>
 #include <QSettings>
+#include <QScrollBar>
 #include <QSharedPointer>
 #include <QSignalSpy>
 #include <QSplitter>
@@ -101,6 +102,19 @@ public:
     QUrl url() const { return QUrl(QStringLiteral("http://127.0.0.1:%1").arg(serverPort())); }
 };
 
+QByteArray requestHeader(const QByteArray &request, const QByteArray &name)
+{
+    const auto headerEnd = request.indexOf("\r\n\r\n");
+    if (headerEnd < 0) { return {}; }
+    for (const auto &line : request.left(headerEnd).split('\n')) {
+        const auto colon = line.indexOf(':');
+        if (colon > 0 && line.left(colon).compare(name, Qt::CaseInsensitive) == 0) {
+            return line.mid(colon + 1).trimmed();
+        }
+    }
+    return {};
+}
+
 QJsonObject capabilities(const QStringList &permissions)
 {
     QJsonArray values;
@@ -145,11 +159,15 @@ private slots:
     void sidebarReclaimsSpace();
     void sidebarResponsivePreference();
     void compactTeamKeepsNavigation();
+    void credentialHeaderParsingPreservesTokenCase_data();
+    void credentialHeaderParsingPreservesTokenCase();
     void disconnectRevokesSession();
     void repeatedVisualModePreservesEdits();
     void repeatedGraphModePreservesEdits();
     void openingDocumentDoesNotSerializePreviousMode();
     void visualPropertyTypesAndPalette();
+    void visualPreservesLargeIntegers();
+    void visualRejectsMultiplePropertyValues();
     void visualNestedEditsUndoAndReorder();
     void visualStructuredAndNewPropertyDialogs();
     void spacesExplainAvailabilityAndKeepComposerVisible();
@@ -159,14 +177,23 @@ private slots:
     void workerRefreshRespectsPermissionsAndGlobalScope();
     void failedMessagePreservesDraftAndPreventsDuplicatePosts();
     void workspaceIgnoresStaleResponsesAndKeepsAreaDrafts();
+    void messageSnapshotCannotOverwriteReturnedSpace_data();
+    void messageSnapshotCannotOverwriteReturnedSpace();
+    void workspaceListSnapshotCannotOverwriteCurrent_data();
+    void workspaceListSnapshotCannotOverwriteCurrent();
     void noteAcknowledgementPreservesNewerEdits();
     void resetClearsSessionData();
     void founderWildcardPermissions();
     void restrictedNotesCarryReaderRank();
     void conversationKeepsSelectionAndEscapesContent();
+    void conversationRefreshKeepsSelectedMessageAtBottom();
     void composerSupportsMultilineAndFilePaste();
     void composerWrapsAndRejectsEmptySend();
     void oldCallClientExplainsRequiredUpdate();
+    void staleCallFailureDoesNotCancelNewAreaCall_data();
+    void staleCallFailureDoesNotCancelNewAreaCall();
+    void staleSessionResponseIsDiscarded_data();
+    void staleSessionResponseIsDiscarded();
     void backgroundRefreshAndDownloadIntegrity();
     void liveServerContract();
 
@@ -246,6 +273,26 @@ void EditorUiTests::compactTeamKeepsNavigation()
     QVERIFY(window.m_sidebarButton->isVisible());
 }
 
+void EditorUiTests::credentialHeaderParsingPreservesTokenCase_data()
+{
+    QTest::addColumn<QByteArray>("headerName");
+    QTest::newRow("title-case") << QByteArray("Authorization");
+    QTest::newRow("lower-case") << QByteArray("authorization");
+    QTest::newRow("mixed-case") << QByteArray("aUtHoRiZaTiOn");
+}
+
+void EditorUiTests::credentialHeaderParsingPreservesTokenCase()
+{
+    QFETCH(QByteArray, headerName);
+    const auto expected = QByteArray("Bearer ") + TestSession;
+    const auto request = QByteArray("GET / HTTP/1.1\r\n") + headerName + QByteArray(": ")
+        + expected + QByteArray("\r\n\r\nAuthorization: body-must-not-be-a-header");
+    QCOMPARE(requestHeader(request, QByteArray("AUTHORIZATION")), expected);
+    QVERIFY(requestHeader(request, QByteArray("authorization")) != QByteArray("Bearer ") + TestSession.toLower());
+    const auto bodyOnly = QByteArray("GET / HTTP/1.1\r\nHost: localhost\r\n\r\nAuthorization: ") + expected;
+    QVERIFY(requestHeader(bodyOnly, QByteArray("authorization")).isEmpty());
+}
+
 void EditorUiTests::disconnectRevokesSession()
 {
     WorkspaceServer server;
@@ -263,11 +310,7 @@ void EditorUiTests::disconnectRevokesSession()
     QVERIFY(waitUntil([&] { return (server.requests.size()) == (1); }));
     QCOMPARE(server.requests.size(), 1);
     QVERIFY(server.requests.first().startsWith("POST /__forge/editor/v1/auth/logout "));
-    QByteArray authorization;
-    for (const auto &line : server.requests.first().split('\n')) {
-        if (line.left(14).toLower() == QByteArray("authorization:")) { authorization = line.mid(14).trimmed(); }
-    }
-    QCOMPARE(authorization, QByteArray("Bearer ") + TestSession);
+    QCOMPARE(requestHeader(server.requests.first(), QByteArray("Authorization")), QByteArray("Bearer ") + TestSession);
     QVERIFY(!window.m_api->isConfigured());
     QVERIFY(window.m_disconnectButton->isHidden());
 }
@@ -335,6 +378,41 @@ void EditorUiTests::visualPropertyTypesAndPalette()
     designer.setDocument(QJsonObject{});
     palette->itemDoubleClicked(palette->item(0));
     QCOMPARE(designer.document().value(QStringLiteral("resources")).toArray().size(), 1);
+}
+
+void EditorUiTests::visualPreservesLargeIntegers()
+{
+    VisualDesigner designer;
+    const auto original = QJsonDocument::fromJson(QByteArray("{\"id\":9223372036854775807,\"negative\":-9223372036854775808,\"ratio\":0.125}")).object();
+    designer.setDocument(original);
+    QCOMPARE(propertyValue(&designer, QStringLiteral("id"))->text(), QStringLiteral("9223372036854775807"));
+    QCOMPARE(propertyValue(&designer, QStringLiteral("negative"))->text(), QStringLiteral("-9223372036854775808"));
+    QCOMPARE(propertyValue(&designer, QStringLiteral("ratio"))->text(), QStringLiteral("0.125"));
+    propertyValue(&designer, QStringLiteral("id"))->setText(QStringLiteral("9007199254740993"));
+    QCOMPARE(designer.document().value(QStringLiteral("id")).toInteger(), qint64(9007199254740993LL));
+    designer.undo();
+    QCOMPARE(designer.document(), original);
+    designer.redo();
+    QCOMPARE(propertyValue(&designer, QStringLiteral("id"))->text(), QStringLiteral("9007199254740993"));
+}
+
+void EditorUiTests::visualRejectsMultiplePropertyValues()
+{
+    VisualDesigner designer;
+    const QJsonObject original{{QStringLiteral("enabled"), true}, {QStringLiteral("count"), 5}};
+    designer.setDocument(original);
+    QSignalSpy errors(&designer, &VisualDesigner::statusMessage);
+    propertyValue(&designer, QStringLiteral("enabled"))->setText(QStringLiteral("false,\"extra\":42"));
+    QCOMPARE(designer.document(), original);
+    QCOMPARE(errors.size(), 1);
+    propertyValue(&designer, QStringLiteral("count"))->setText(QStringLiteral("3,\"value\":7"));
+    QCOMPARE(designer.document(), original);
+    QCOMPARE(errors.size(), 2);
+    propertyValue(&designer, QStringLiteral("count"))->setText(QStringLiteral("3,7"));
+    QCOMPARE(designer.document(), original);
+    QCOMPARE(errors.size(), 3);
+    propertyValue(&designer, QStringLiteral("enabled"))->setText(QStringLiteral(" false "));
+    QVERIFY(!designer.document().value(QStringLiteral("enabled")).toBool());
 }
 
 void EditorUiTests::visualNestedEditsUndoAndReorder()
@@ -621,11 +699,18 @@ void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
 {
     WorkspaceServer server;
     QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+    server.respond = [](const QByteArray &request) {
+        if (request.contains("/areas?")) {
+            return WorkspaceServer::Response{QJsonDocument(spaces()).toJson(QJsonDocument::Compact)};
+        }
+        return WorkspaceServer::Response{request.contains("/areas/beta/messages?")
+            ? QJsonDocument(messages(QStringLiteral("correct area"))).toJson(QJsonDocument::Compact) : QByteArray("{}")};
+    };
     ApiClient api;
     QString error;
     QVERIFY(api.configure(server.url(), TestSession, true, &error));
     TeamWorkspace team(&api);
-    team.setCapabilities(capabilities({QStringLiteral("areas.read"), QStringLiteral("messages.write")}));
+    team.setCapabilities(capabilities({QStringLiteral("areas.read"), QStringLiteral("messages.read"), QStringLiteral("messages.write")}));
     team.setProject(QStringLiteral("Alpha"));
     deliver(api, QStringLiteral("team-areas:Alpha"), spaces());
     auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
@@ -636,7 +721,7 @@ void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
     composer->setPlainText(QStringLiteral("Beta draft"));
     deliver(api, QStringLiteral("team-messages:alpha"), messages(QStringLiteral("wrong area")));
     QCOMPARE(messageList->messageCount(), 0);
-    deliver(api, QStringLiteral("team-messages:beta"), messages(QStringLiteral("correct area")));
+    QVERIFY(waitUntil([&] { return messageList->messageCount() == 1; }));
     QCOMPARE(messageList->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("correct area"));
     areas->setCurrentRow(0);
     QCOMPARE(composer->toPlainText(), QStringLiteral("Alpha draft"));
@@ -649,6 +734,109 @@ void EditorUiTests::workspaceIgnoresStaleResponsesAndKeepsAreaDrafts()
     QCOMPARE(team.findChild<QTreeWidget *>(QStringLiteral("noteList"))->topLevelItemCount(), 0);
     deliver(api, QStringLiteral("team-attachments:alpha"), QJsonObject{{QStringLiteral("attachments"), QJsonArray{QJsonObject{}}}});
     QCOMPARE(team.findChild<QTreeWidget *>(QStringLiteral("attachmentList"))->topLevelItemCount(), 0);
+}
+
+void EditorUiTests::messageSnapshotCannotOverwriteReturnedSpace_data()
+{
+    QTest::addColumn<bool>("oldFailure");
+    QTest::newRow("old-snapshot") << false;
+    QTest::newRow("old-error") << true;
+}
+
+void EditorUiTests::messageSnapshotCannotOverwriteReturnedSpace()
+{
+    QFETCH(bool, oldFailure);
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    int alphaReads = 0;
+    server.respond = [&](const QByteArray &request) {
+        if (request.startsWith("GET /__forge/editor/v1/areas/alpha/messages?")) {
+            ++alphaReads;
+            const auto body = QJsonDocument(messages(alphaReads == 1 ? QStringLiteral("Old snapshot") : QStringLiteral("Current snapshot"))).toJson(QJsonDocument::Compact);
+            return WorkspaceServer::Response{body, oldFailure && alphaReads == 1 ? QByteArray("503 Service Unavailable") : QByteArray("200 OK"), alphaReads == 1 ? 250 : 10};
+        }
+        return WorkspaceServer::Response{};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    TeamWorkspace team(&api);
+    team.setCapabilities(capabilities({QStringLiteral("areas.read"), QStringLiteral("messages.read")}));
+    deliver(api, QStringLiteral("team-areas:*"), spaces());
+    auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
+    auto *view = team.findChild<ChatView *>(QStringLiteral("messageList"));
+    QSignalSpy status(&team, &TeamWorkspace::statusMessage);
+    EditorPreferences preferences;
+    preferences.safeGetRetries = 0;
+    api.applyPreferences(preferences);
+    QVERIFY(waitUntil([&] { return alphaReads == 1; }));
+    areas->setCurrentRow(1);
+    areas->setCurrentRow(0);
+    QVERIFY(waitUntil([&] { return alphaReads == 2 && view->messageCount() == 1; }));
+    QCOMPARE(view->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("Current snapshot"));
+    QTest::qWait(300);
+    QCOMPARE(view->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("Current snapshot"));
+    QVERIFY(status.isEmpty());
+}
+
+void EditorUiTests::workspaceListSnapshotCannotOverwriteCurrent_data()
+{
+    QTest::addColumn<QString>("listKind");
+    QTest::addColumn<bool>("oldFailure");
+    for (const auto &kind : {QStringLiteral("attachments"), QStringLiteral("notes"), QStringLiteral("notes-refresh")}) {
+        QTest::newRow(qPrintable(kind + QStringLiteral("-snapshot"))) << kind << false;
+        QTest::newRow(qPrintable(kind + QStringLiteral("-error"))) << kind << true;
+    }
+}
+
+void EditorUiTests::workspaceListSnapshotCannotOverwriteCurrent()
+{
+    QFETCH(QString, listKind);
+    QFETCH(bool, oldFailure);
+    const bool attachments = listKind == QStringLiteral("attachments");
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    int reads = 0;
+    server.respond = [&](const QByteArray &request) {
+        const bool target = attachments ? request.startsWith("GET /__forge/editor/v1/areas/alpha/attachments ")
+            : request.startsWith("GET /__forge/editor/v1/notes?project=Alpha ");
+        if (!target) { return WorkspaceServer::Response{}; }
+        ++reads;
+        const auto label = reads == 1 ? QStringLiteral("Old snapshot") : QStringLiteral("Current snapshot");
+        const auto key = attachments ? QStringLiteral("attachments") : QStringLiteral("notes");
+        const QJsonObject item{{attachments ? QStringLiteral("original_name") : QStringLiteral("title"), label}};
+        return WorkspaceServer::Response{QJsonDocument(QJsonObject{{key, QJsonArray{item}}}).toJson(QJsonDocument::Compact),
+            oldFailure && reads == 1 ? QByteArray("503 Service Unavailable") : QByteArray("200 OK"), reads == 1 ? 300 : 10};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    EditorPreferences preferences;
+    preferences.safeGetRetries = 0;
+    api.applyPreferences(preferences);
+    TeamWorkspace team(&api);
+    team.setProject(QStringLiteral("Alpha"));
+    team.setCapabilities(capabilities({QStringLiteral("areas.read"), attachments ? QStringLiteral("attachments.read") : QStringLiteral("notes.read")}));
+    if (attachments) { deliver(api, QStringLiteral("team-areas:Alpha"), spaces()); }
+    else { team.refreshAll(); }
+    QVERIFY(waitUntil([&] { return reads == 1; }));
+    QSignalSpy status(&team, &TeamWorkspace::statusMessage);
+    if (attachments) {
+        auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
+        areas->setCurrentRow(1);
+        areas->setCurrentRow(0);
+    } else if (listKind == QStringLiteral("notes-refresh")) {
+        team.refreshAll();
+    } else {
+        team.setProject(QStringLiteral("Beta"));
+        team.setProject(QStringLiteral("Alpha"));
+    }
+    auto *tree = team.findChild<QTreeWidget *>(attachments ? QStringLiteral("attachmentList") : QStringLiteral("noteList"));
+    QVERIFY(waitUntil([&] { return reads == 2 && tree->topLevelItemCount() == 1; }));
+    QCOMPARE(tree->topLevelItem(0)->text(0), QStringLiteral("Current snapshot"));
+    QTest::qWait(350);
+    QCOMPARE(tree->topLevelItem(0)->text(0), QStringLiteral("Current snapshot"));
+    QVERIFY(status.isEmpty());
 }
 
 void EditorUiTests::noteAcknowledgementPreservesNewerEdits()
@@ -765,6 +953,23 @@ void EditorUiTests::conversationKeepsSelectionAndEscapesContent()
     QVERIFY(view.setConversation({}, {}));
 }
 
+void EditorUiTests::conversationRefreshKeepsSelectedMessageAtBottom()
+{
+    ChatView view;
+    view.resize(700, 500);
+    view.show();
+    QJsonArray records{QJsonObject{{QStringLiteral("body"), QStringLiteral("Copy this message")}}};
+    QVERIFY(view.setConversation(records, {}));
+    QVERIFY(waitUntil([&] { return view.verticalScrollBar()->value() == view.verticalScrollBar()->maximum(); }));
+    auto cursor = view.document()->find(QStringLiteral("Copy this message"));
+    QVERIFY(!cursor.isNull());
+    view.setTextCursor(cursor);
+    records.append(QJsonObject{{QStringLiteral("body"), QStringLiteral("New incoming message")}});
+    QVERIFY(view.setConversation(records, {}));
+    QCOMPARE(view.textCursor().selectedText(), QStringLiteral("Copy this message"));
+    QVERIFY(waitUntil([&] { return view.verticalScrollBar()->value() == view.verticalScrollBar()->maximum(); }));
+}
+
 void EditorUiTests::composerSupportsMultilineAndFilePaste()
 {
     ChatComposer composer;
@@ -835,6 +1040,118 @@ void EditorUiTests::oldCallClientExplainsRequiredUpdate()
     }
     team.setCapabilities(capabilities({QStringLiteral("*")}));
     QVERIFY(availability->text().isEmpty());
+}
+
+void EditorUiTests::staleCallFailureDoesNotCancelNewAreaCall_data()
+{
+    QTest::addColumn<bool>("ticketFailure");
+    QTest::addColumn<bool>("returnToArea");
+    QTest::newRow("old-start-new-area") << false << false;
+    QTest::newRow("old-ticket-new-area") << true << false;
+    QTest::newRow("old-start-returned-area") << false << true;
+    QTest::newRow("old-ticket-returned-area") << true << true;
+}
+
+void EditorUiTests::staleCallFailureDoesNotCancelNewAreaCall()
+{
+    QFETCH(bool, ticketFailure);
+    QFETCH(bool, returnToArea);
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    int starts = 0;
+    int tickets = 0;
+    int oldTickets = 0;
+    server.respond = [&](const QByteArray &request) {
+        if (request.startsWith("POST /__forge/editor/v1/calls ")) {
+            ++starts;
+            if (starts == 1) {
+                return ticketFailure
+                    ? WorkspaceServer::Response{QByteArray("{\"id\":\"alpha-call\"}"), QByteArray("201 Created"), 0}
+                    : WorkspaceServer::Response{QByteArray("{\"detail\":\"Old area unavailable\"}"), QByteArray("503 Service Unavailable"), 150};
+            }
+            return WorkspaceServer::Response{QByteArray("{\"id\":\"beta-call\"}"), QByteArray("201 Created"), 350};
+        }
+        if (request.startsWith("POST /__forge/editor/v1/calls/alpha-call/ticket ")) {
+            ++oldTickets;
+            return WorkspaceServer::Response{QByteArray("{\"detail\":\"Old ticket unavailable\"}"), QByteArray("503 Service Unavailable"), 150};
+        }
+        if (request.startsWith("POST /__forge/editor/v1/calls/beta-call/ticket ")) { ++tickets; }
+        return WorkspaceServer::Response{};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    TeamWorkspace team(&api);
+    team.setCapabilities(capabilities({QStringLiteral("calls.start")}));
+    deliver(api, QStringLiteral("team-areas:*"), spaces());
+    auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
+    QSignalSpy failed(&api, &ApiClient::requestFailed);
+    QSignalSpy status(&team, &TeamWorkspace::statusMessage);
+    QVERIFY(QMetaObject::invokeMethod(&team, "startAudioCall"));
+    QVERIFY(waitUntil([&] { return starts == 1; }));
+    if (ticketFailure) { QVERIFY(waitUntil([&] { return oldTickets == 1; })); }
+    areas->setCurrentRow(1);
+    if (returnToArea) { areas->setCurrentRow(0); }
+    QVERIFY(QMetaObject::invokeMethod(&team, "startAudioCall"));
+    QVERIFY(waitUntil([&] { return starts == 2; }));
+    QVERIFY(waitUntil([&] { return !failed.isEmpty(); }));
+    QVERIFY(failed.first().at(0).toString().startsWith(ticketFailure ? QStringLiteral("team-call-ticket:alpha-call:")
+                                                                 : QStringLiteral("team-call:alpha:")));
+    QVERIFY(status.isEmpty());
+    QVERIFY(waitUntil([&] { return tickets == 1; }));
+}
+
+void EditorUiTests::staleSessionResponseIsDiscarded_data()
+{
+    QTest::addColumn<QString>("responseKind");
+    QTest::newRow("expired-profile") << QStringLiteral("unauthorized");
+    QTest::newRow("old-profile") << QStringLiteral("profile");
+    QTest::newRow("old-login") << QStringLiteral("login");
+    QTest::newRow("old-download") << QStringLiteral("download");
+    QTest::newRow("expired-download") << QStringLiteral("download-unauthorized");
+}
+
+void EditorUiTests::staleSessionResponseIsDiscarded()
+{
+    QFETCH(QString, responseKind);
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    server.respond = [&](const QByteArray &request) {
+        if (request.contains("/auth/login ")) {
+            return WorkspaceServer::Response{QByteArray("{\"access_token\":\"") + TestSession + QByteArray("\"}"), QByteArray("200 OK"), 120};
+        }
+        if (responseKind.endsWith(QStringLiteral("unauthorized"))) {
+            return WorkspaceServer::Response{QByteArray("{\"detail\":\"Old session expired\"}"), QByteArray("401 Unauthorized"), 120};
+        }
+        return WorkspaceServer::Response{request.contains("/attachments/") ? QByteArray("old private file") : QByteArray("{\"display_name\":\"Old account\"}"), QByteArray("200 OK"), 120};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto target = directory.filePath(QStringLiteral("private.txt"));
+    QSignalSpy received(&api, &ApiClient::jsonReceived);
+    QSignalSpy failed(&api, &ApiClient::requestFailed);
+    QSignalSpy downloaded(&api, &ApiClient::fileDownloaded);
+    QSignalSpy activity(&api, &ApiClient::connectionActivityChanged);
+    if (responseKind.startsWith(QStringLiteral("download"))) { api.downloadAttachment(QStringLiteral("old-file"), target, 1024); }
+    else if (responseKind == QStringLiteral("login")) { api.login(QStringLiteral("old-account"), QStringLiteral("password")); }
+    else { api.fetchProfile(); }
+    QVERIFY(waitUntil([&] { return server.requests.size() == 1; }));
+    auto replacement = TestSession;
+    replacement[replacement.size() - 1] = 'z';
+    QVERIFY(api.setSessionToken(replacement, &error));
+    QVERIFY(waitUntil([&] { return !activity.isEmpty() && !activity.last().at(0).toBool(); }));
+    QTest::qWait(100);
+    QVERIFY(api.isConfigured());
+    QVERIFY(received.isEmpty());
+    QVERIFY(failed.isEmpty());
+    QVERIFY(downloaded.isEmpty());
+    QVERIFY(!QFile::exists(target));
+    api.fetchProfile();
+    QVERIFY(waitUntil([&] { return server.requests.size() == 2; }));
+    QCOMPARE(requestHeader(server.requests.last(), QByteArray("Authorization")), QByteArray("Bearer ") + replacement);
 }
 
 void EditorUiTests::backgroundRefreshAndDownloadIntegrity()

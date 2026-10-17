@@ -90,7 +90,12 @@ QString valueText(const QJsonValue &value)
 {
     if (value.isString()) { return value.toString(); }
     if (value.isBool()) { return value.toBool() ? QStringLiteral("true") : QStringLiteral("false"); }
-    if (value.isDouble()) { return QString::number(value.toDouble(), 'g', 17); }
+    if (value.isDouble()) {
+        // Qt keeps signed 64-bit JSON integers exactly; converting to double
+        // here would round identifiers above 2^53 before the user edits them.
+        const auto json = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
+        return QString::fromUtf8(json.mid(1, json.size() - 2));
+    }
     if (value.isObject()) { return QString::fromUtf8(QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact)); }
     if (value.isArray()) { return QString::fromUtf8(QJsonDocument(value.toArray()).toJson(QJsonDocument::Compact)); }
     return QStringLiteral("null");
@@ -108,9 +113,9 @@ bool parseValue(const QString &text, const QJsonValue &original, QJsonValue *val
     if (original.isString()) { *value = text; return true; }
     if (text.size() > 8 * 1024 * 1024) { return false; }
     QJsonParseError error;
-    const auto parsed = QJsonDocument::fromJson(QByteArray("{\"value\":") + text.trimmed().toUtf8() + QByteArray("}"), &error);
-    if (error.error != QJsonParseError::NoError || !parsed.isObject()) { return false; }
-    const auto candidate = parsed.object().value(QStringLiteral("value"));
+    const auto parsed = QJsonDocument::fromJson(QByteArray("[") + text.trimmed().toUtf8() + QByteArray("]"), &error);
+    if (error.error != QJsonParseError::NoError || !parsed.isArray() || parsed.array().size() != 1) { return false; }
+    const auto candidate = parsed.array().first();
     if (candidate.type() != original.type()) { return false; }
     *value = candidate;
     return true;

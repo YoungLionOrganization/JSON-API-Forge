@@ -91,7 +91,7 @@ bool ChatView::setConversation(const QJsonArray &messages, const QJsonArray &att
                  QString::number(file.value(QStringLiteral("size")).toDouble() / 1024.0, 'f', 1));
     }
     setHtml(content);
-    if (!bottom && anchor != selection) {
+    if (anchor != selection) {
         QTextCursor restored(document());
         const int maximum = qMax(0, document()->characterCount() - 1);
         restored.setPosition(qBound(0, anchor, maximum));

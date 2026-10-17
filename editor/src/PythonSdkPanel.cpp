@@ -44,6 +44,13 @@ bool safeEndpoint(const QString &value, QString *errorMessage)
     QUrl normalized;
     return ApiClient::normalizeServerUrl(QUrl(value), true, &normalized, errorMessage);
 }
+
+QString pythonEndpoint(const QString &value)
+{
+    // safeEndpoint has already restricted plain HTTP to an explicit loopback URL.
+    return pythonLiteral(value) + (QUrl(value).scheme().compare(QStringLiteral("http"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral(", allow_insecure_http=True") : QString());
+}
 } // namespace
 
 PythonSdkPanel::PythonSdkPanel(QWidget *parent)
@@ -145,7 +152,7 @@ QString PythonSdkPanel::generatedSnippet(const PythonSdkSettings &settings, QStr
         fail(errorMessage, QStringLiteral("Project, route, operation or environment variable contains unsafe characters."));
         return {};
     }
-    const auto endpoint = pythonLiteral(settings.endpoint);
+    const auto endpoint = pythonEndpoint(settings.endpoint);
     const auto project = pythonLiteral(settings.project);
     const auto resource = pythonLiteral(settings.resource);
     const auto operation = pythonLiteral(settings.operation);
@@ -191,7 +198,7 @@ QString PythonSdkPanel::generatedSnippet(const PythonSdkSettings &settings, QStr
             }
             endpointDefinitions.append(
                 QStringLiteral("    ForgeEndpoint(%1, %2, api_key=os.environ[%3]),")
-                    .arg(pythonLiteral(QStringLiteral("region-%1").arg(++index)), pythonLiteral(value), environment));
+                    .arg(pythonLiteral(QStringLiteral("region-%1").arg(++index)), pythonEndpoint(value), environment));
         }
         return QStringLiteral(
                    "import os\n\n"
@@ -238,8 +245,8 @@ void PythonSdkPanel::refreshSnippet()
     const auto extra = m_mode->currentData().toString() == QStringLiteral("younglion")
         ? QStringLiteral("younglion")
         : (m_mode->currentData().toString() == QStringLiteral("ddm") ? QStringLiteral("ddm") : QString());
-    m_install->setText(extra.isEmpty() ? QStringLiteral("Install:  pip install json-api-forge")
-                                       : QStringLiteral("Install:  pip install \"json-api-forge[%1]\"").arg(extra));
+    m_install->setText(extra.isEmpty() ? QStringLiteral("Install:  pip install json-api-forge-client")
+                                       : QStringLiteral("Install:  pip install \"json-api-forge-client[%1]\"").arg(extra));
     if (snippet.isEmpty()) {
         m_snippet->setPlainText(QStringLiteral("# %1").arg(error));
         return;
@@ -280,7 +287,7 @@ void PythonSdkPanel::runHealthCheck()
                             "with ForgeClient(%2, api_key=key, timeout=5.0) as client:\n"
                             "    response = client.health()\n"
                             "    print('HTTP', response.status_code, response.data)\n")
-                            .arg(pythonLiteral(value.apiKeyEnvironment), pythonLiteral(value.endpoint));
+                            .arg(pythonLiteral(value.apiKeyEnvironment), pythonEndpoint(value.endpoint));
     startPython(script, QStringLiteral("Forge SDK health check"));
 }
 
@@ -298,11 +305,21 @@ bool PythonSdkPanel::startPython(const QString &script, const QString &operation
         m_result->setText(QStringLiteral("No Python interpreter was found on PATH."));
         return false;
     }
-    m_process = new QProcess(this);
+    auto *process = new QProcess(this);
+    m_process = process;
     m_processOperation = operation;
     m_process->setProcessChannelMode(QProcess::MergedChannels);
-    connect(m_process, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
-        const auto output = QString::fromUtf8(m_process->readAll()).trimmed().left(4096);
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart || m_process != process) { return; }
+        const auto message = QStringLiteral("%1 could not start: %2").arg(m_processOperation, process->errorString());
+        m_result->setText(message);
+        m_process = nullptr;
+        process->deleteLater();
+        emit statusMessage(message);
+    });
+    connect(process, &QProcess::finished, this, [this, process](int exitCode, QProcess::ExitStatus status) {
+        if (m_process != process) { return; }
+        const auto output = QString::fromUtf8(process->readAll()).trimmed().left(4096);
         const bool success = status == QProcess::NormalExit && exitCode == 0;
         m_result->setText(QStringLiteral("%1: %2\n%3")
                               .arg(m_processOperation, success ? QStringLiteral("passed") : QStringLiteral("failed"),
