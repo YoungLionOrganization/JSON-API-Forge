@@ -2,6 +2,7 @@
 
 ## Unreleased maintenance
 
+- Reject ZIP member names that alias during Windows/macOS extraction, including trailing dots/spaces, reserved device names and Unicode normalization collisions; apply the same conservative alias check to output/source boundaries.
 - Refuse private environment files, keys, databases, logs and generated dependencies/caches in delivery ZIPs, including ignored local files; preserve the previous verified archive on failure.
 - Refuse archive output paths that would replace a bundled document or installer.
 - Preserve input validation, row-count guards, audit insertion and cache invalidation in all 20 domain transition graphs, matching their JSON RPC contracts.

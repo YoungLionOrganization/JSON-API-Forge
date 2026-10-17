@@ -9,6 +9,7 @@ import os
 import stat
 import subprocess
 import tempfile
+import unicodedata
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,8 +37,44 @@ MAX_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_FILE_BYTES = 16 * 1024 * 1024
 
 
+def _portable_name(name: str) -> str:
+    """Use names that stay distinct when extracted on supported filesystems."""
+    devices = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    devices.update(
+        f"{prefix}{suffix}" for prefix in ("COM", "LPT") for suffix in "123456789¹²³"
+    )
+    for part in name.split("/"):
+        if (
+            not part
+            or part in {".", ".."}
+            or part.endswith((".", " "))
+            or any(
+                char in '<>:"\\|?*' or ord(char) < 32 or ord(char) == 127
+                for char in part
+            )
+            or part.split(".", 1)[0].rstrip(" ").upper() in devices
+        ):
+            raise RuntimeError(f"bundle source has an unsafe filename: {name!r}")
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def _same_location(left: Path, right: Path) -> bool:
+    # Case and Unicode aliases must be refused even on a case-sensitive build
+    # host. samefile also covers actual filesystem aliases such as short names.
+    def key(path: Path) -> str:
+        return unicodedata.normalize("NFC", str(path)).casefold()
+
+    if key(left) == key(right):
+        return True
+    try:
+        return left.samefile(right)
+    except FileNotFoundError:
+        return False
+
+
 def _check_delivery_path(path: Path) -> None:
     """Fail closed for local state even when Git/manifest checks ignore it."""
+    _portable_name(path.relative_to(ROOT).as_posix())
     parts = tuple(part.casefold() for part in path.relative_to(ROOT).parts)
     generated = {
         ".git",
@@ -127,6 +164,7 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
 
     result: list[tuple[Path, str, os.stat_result]] = []
     names = set()
+    components: dict[str, str] = {}
     total = 0
     for path in paths:
         _check_delivery_path(path)
@@ -148,27 +186,34 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
         if total > MAX_TOTAL_BYTES:
             raise RuntimeError(f"bundle content exceeds {MAX_TOTAL_BYTES} bytes")
         name = path.relative_to(ROOT).as_posix()
-        if (
-            name.casefold() in names
-            or any(char in name for char in "\\:")
-            or any(ord(char) < 32 or ord(char) == 127 for char in name)
-        ):
+        key = _portable_name(name)
+        if key in names:
             raise RuntimeError(
                 f"bundle source has an unsafe or colliding filename: {name!r}"
             )
-        names.add(name.casefold())
+        parts = name.split("/")
+        for count in range(1, len(parts) + 1):
+            prefix = "/".join(parts[:count])
+            alias = unicodedata.normalize("NFC", prefix).casefold()
+            if alias in components and components[alias] != prefix:
+                raise RuntimeError(
+                    f"bundle source has a colliding path component: {prefix!r}"
+                )
+            components[alias] = prefix
+        names.add(key)
         result.append((path, name, metadata))
     return sorted(result, key=lambda item: item[1])
 
 
 def build(output: Path) -> None:
     output = output.resolve()
-    if output.is_relative_to((ROOT / "app").resolve()):
+    app_root = (ROOT / "app").resolve()
+    if any(_same_location(parent, app_root) for parent in (output, *output.parents)):
         raise RuntimeError("bundle output must not be inside app sources")
-    output.parent.mkdir(parents=True, exist_ok=True)
     sources = _sources()
-    if any(output == path.resolve() for path, _, _ in sources):
+    if any(_same_location(output, path.resolve()) for path, _, _ in sources):
         raise RuntimeError("bundle output must not replace a delivery source")
+    output.parent.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.fromtimestamp(
         min(max(_source_date_epoch(), 315_532_800), 4_354_819_198), tz=timezone.utc
     ).timetuple()[:6]

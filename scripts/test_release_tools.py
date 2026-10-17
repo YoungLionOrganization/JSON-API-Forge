@@ -107,13 +107,110 @@ class ReleaseToolsTests(unittest.TestCase):
                 self.assertEqual(archive.infolist()[0].date_time[0], year)
 
     def test_bundle_output_must_not_replace_delivery_sources(self):
-        for relative in ("README.md", "LICENSE", "scripts/install-example.sh"):
+        for relative in (
+            "README.md",
+            "readme.md",
+            "LICENSE",
+            "scripts/install-example.sh",
+            "SCRIPTS/INSTALL-EXAMPLE.SH",
+        ):
             with self.subTest(output=relative):
                 output = self.root / relative
-                original = output.read_bytes()
+                originals = {
+                    source: source.read_bytes()
+                    for source in (
+                        self.root / "README.md",
+                        self.root / "LICENSE",
+                        self.root / "scripts/install-example.sh",
+                    )
+                }
                 with self.assertRaisesRegex(RuntimeError, "replace.*source"):
                     bundle.build(output)
-                self.assertEqual(output.read_bytes(), original)
+                for source, original in originals.items():
+                    self.assertEqual(source.read_bytes(), original)
+
+    def test_output_app_case_alias_is_refused_on_every_build_host(self):
+        output = self.root / "APP/output.zip"
+        with self.assertRaisesRegex(RuntimeError, "inside app"):
+            bundle.build(output)
+        self.assertFalse(output.exists())
+
+    def test_windows_extraction_aliases_cannot_overwrite_bundle_members(self):
+        # NTFS extended paths let this reproduce a POSIX-created archive on
+        # Windows too. Windows ZIP extraction strips the trailing dot.
+        root = self.root
+        if os.name == "nt":
+            root = Path("\\\\?\\" + str(root))
+        first = root / "app/Test/collision.txt"
+        alias = root / "app/Test/collision.txt."
+        first.write_bytes(b"keep the first member")
+        alias.write_bytes(b"would overwrite the first member")
+        output = self.root / "existing.zip"
+        output.write_bytes(b"previous verified archive")
+        try:
+            with (
+                patch.object(bundle, "ROOT", root),
+                self.assertRaisesRegex(RuntimeError, "unsafe.*filename"),
+            ):
+                bundle.build(output)
+            self.assertEqual(output.read_bytes(), b"previous verified archive")
+            self.assertFalse(list(self.root.glob("*.tmp")))
+        finally:
+            alias.unlink()
+
+    def test_nonportable_source_names_are_refused_before_replacing_output(self):
+        root = self.root
+        if os.name == "nt":
+            root = Path("\\\\?\\" + str(root))
+        names = ["trailing.txt ", "CON.txt", "AUX.config.json", "COM¹.txt"]
+        if os.name != "nt":
+            names.extend(["bad?name.json", 'bad"name.json', "bad|name.json"])
+        output = self.root / "existing.zip"
+        output.write_bytes(b"previous verified archive")
+        for name in names:
+            with self.subTest(source=name):
+                source = root / "app/Test" / name
+                source.write_bytes(b"nonportable source fixture")
+                try:
+                    with (
+                        patch.object(bundle, "ROOT", root),
+                        self.assertRaisesRegex(RuntimeError, "unsafe.*filename"),
+                    ):
+                        bundle.build(output)
+                    self.assertEqual(output.read_bytes(), b"previous verified archive")
+                    self.assertFalse(list(self.root.glob("*.tmp")))
+                finally:
+                    source.unlink()
+
+    def test_unicode_normalization_collisions_are_refused(self):
+        first = self.root / "app/Test/caf\u00e9.json"
+        alias = self.root / "app/Test/cafe\u0301.json"
+        first.write_bytes(b"first source")
+        alias.write_bytes(b"second source")
+        if first.samefile(alias):
+            self.skipTest("Filesystem already normalizes Unicode names")
+        output = self.root / "existing.zip"
+        output.write_bytes(b"previous verified archive")
+        with self.assertRaisesRegex(RuntimeError, "colliding"):
+            bundle.build(output)
+        self.assertEqual(output.read_bytes(), b"previous verified archive")
+        self.assertFalse(list(self.root.glob("*.tmp")))
+
+    def test_directory_aliases_cannot_merge_on_extraction(self):
+        first = self.root / "app/Test/caf\u00e9"
+        alias = self.root / "app/Test/cafe\u0301"
+        first.mkdir()
+        alias.mkdir(exist_ok=True)
+        if first.samefile(alias):
+            self.skipTest("Filesystem already normalizes Unicode directory names")
+        (first / "first.json").write_bytes(b"first directory")
+        (alias / "second.json").write_bytes(b"would merge into the first directory")
+        output = self.root / "existing.zip"
+        output.write_bytes(b"previous verified archive")
+        with self.assertRaisesRegex(RuntimeError, "colliding"):
+            bundle.build(output)
+        self.assertEqual(output.read_bytes(), b"previous verified archive")
+        self.assertFalse(list(self.root.glob("*.tmp")))
 
     @unittest.skipUnless(os.name == "nt", "Windows junction boundary")
     def test_windows_junction_sources_are_rejected(self):
