@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 MODULE_FLOORS: dict[str, float] = {
+    "json_api_forge/_io.py": 95.0,
     "json_api_forge/client.py": 80.0,
     "json_api_forge/pagination.py": 90.0,
     "json_api_forge/control_plane.py": 90.0,

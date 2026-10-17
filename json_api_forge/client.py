@@ -9,11 +9,13 @@ import time
 import unicodedata
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from typing import Any, Literal
 from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
+from ._io import run_io, wait_owned
 from .errors import ForgeHTTPError, ForgeResponseTooLarge, ForgeTransportError, safe_error_text
 from .models import ForgeResponse, JsonObject, RequestAttempt
 from .options import RetryPolicy
@@ -149,12 +151,27 @@ def _headers(
     return values
 
 
+def _reject_json_constant(value: str) -> Any:
+    raise ValueError(f"Invalid JSON number constant: {value}")
+
+
+def _finite_json_float(value: str) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("JSON number exceeds the supported finite float range")
+    return result
+
+
 def _decode_response(response: httpx.Response, content: bytes, *, expect_json: bool) -> ForgeResponse[Any]:
     detail: Any
+    valid_json = True
     try:
-        decoded = json.loads(content) if content else None
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+        decoded = json.loads(content, parse_constant=_reject_json_constant, parse_float=_finite_json_float) if content else None
+    except (ValueError, RecursionError):
+        # ValueError also covers the interpreter's bounded integer conversion,
+        # UnicodeDecodeError and JSONDecodeError; keep these HTTP failures observable.
         decoded = None
+        valid_json = False
     if response.is_redirect:
         raise ForgeHTTPError(
             response.status_code,
@@ -175,7 +192,7 @@ def _decode_response(response: httpx.Response, content: bytes, *, expect_json: b
             response.headers.get("X-Request-ID"),
             response.headers.get("Retry-After"),
         )
-    if expect_json and decoded is None and content:
+    if expect_json and not valid_json and content:
         raise ForgeHTTPError(response.status_code, "Server returned non-JSON content", response.headers.get("X-Request-ID"))
     data = decoded if expect_json else content
     return ForgeResponse(
@@ -232,6 +249,55 @@ async def _bounded_content_async(response: httpx.Response, max_response_bytes: i
             raise ForgeResponseTooLarge(f"Response exceeds max_response_bytes={max_response_bytes}")
         chunks.extend(chunk)
     return bytes(chunks)
+
+
+class _AsyncFileStream(httpx.AsyncByteStream):
+    """Keep httpx multipart's synchronous file reads off the event loop."""
+
+    def __init__(self, stream: httpx.SyncByteStream):
+        self._chunks = iter(stream)
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        while True:
+            chunk = await run_io(next, self._chunks, None)
+            if chunk is None:
+                break
+            yield chunk
+
+
+class _OwnedResponseStream(httpx.AsyncByteStream):
+    """Finish releasing the HTTP connection even when cancellation repeats."""
+
+    def __init__(self, stream: httpx.AsyncByteStream):
+        self._stream = stream
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        async for chunk in self._stream:
+            yield chunk
+
+    async def aclose(self) -> None:
+        # httpx marks a Response closed before awaiting the underlying stream.
+        # Shield here, including its automatic close at the end of body reads;
+        # a later Response.aclose() cannot resume an interrupted first close.
+        await wait_owned(asyncio.create_task(self._stream.aclose()))
+
+
+@asynccontextmanager
+async def _stream_async(client: httpx.AsyncClient, method: str, path: str, **kwargs: Any) -> AsyncIterator[httpx.Response]:
+    if kwargs.get("files") is None:
+        async with client.stream(method, path, **kwargs) as response:
+            response.stream = _OwnedResponseStream(response.stream)
+            yield response
+        return
+    # Request assembly also seeks/fstats files to compute Content-Length.
+    request = await run_io(client.build_request, method, path, **kwargs)
+    request.stream = _AsyncFileStream(request.stream)
+    response = await client.send(request, stream=True)
+    response.stream = _OwnedResponseStream(response.stream)
+    try:
+        yield response
+    finally:
+        await response.aclose()
 
 
 class ForgeClient:
@@ -509,7 +575,8 @@ class AsyncForgeClient:
             try:
                 self._client.cookies.clear()
                 try:
-                    async with self._client.stream(
+                    async with _stream_async(
+                        self._client,
                         normalized_method,
                         normalized_path,
                         json=json_body,
@@ -642,7 +709,7 @@ class AsyncForgeClient:
         return await self.request("POST", f"api/{_segment(project)}/v1/{_route(resource)}/_batch", json_body=batch_payload(payloads))
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        await wait_owned(asyncio.create_task(self._client.aclose()))
 
     async def __aenter__(self) -> AsyncForgeClient:
         return self

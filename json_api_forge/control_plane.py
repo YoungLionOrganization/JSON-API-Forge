@@ -4,14 +4,15 @@ import os
 import re
 import stat
 import tempfile
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import unquote, urlencode, urljoin, urlsplit, urlunsplit
 
 import httpx
 
+from ._io import run_io
 from .client import AsyncForgeClient, ForgeClient, _base_url, _controls, _route, _segment
 from .errors import ForgeHTTPError, ForgeSessionError
 from .models import ForgeResponse, JsonObject
@@ -184,6 +185,16 @@ def _open_attachment(source: str | os.PathLike[str], max_bytes: int) -> Iterator
             snapshot.close()
 
 
+@asynccontextmanager
+async def _open_attachment_async(source: str | os.PathLike[str], max_bytes: int) -> AsyncIterator[tuple[str, BinaryIO]]:
+    attachment = _open_attachment(source, max_bytes)
+    try:
+        yield await run_io(attachment.__enter__)
+    finally:
+        # run_io drains an interrupted snapshot/read before its file closes.
+        await run_io(attachment.__exit__, None, None, None)
+
+
 class _ControlPlaneBase:
     def _initialize_control_plane(self, base_url: str, *, allow_insecure_http: bool, max_attachment_bytes: int) -> None:
         if not 1024 <= int(max_attachment_bytes) <= 512 * 1024 * 1024:
@@ -191,6 +202,7 @@ class _ControlPlaneBase:
         self._base_url = _base_url(base_url, allow_insecure_http=allow_insecure_http)
         self.max_attachment_bytes = int(max_attachment_bytes)
         self._session = bytearray()
+        self._session_revision = 0
 
     @property
     def has_session(self) -> bool:
@@ -202,6 +214,7 @@ class _ControlPlaneBase:
         self._session.extend(encoded)
 
     def clear_session(self) -> None:
+        self._session_revision += 1
         for index in range(len(self._session)):
             self._session[index] = 0
         self._session.clear()
@@ -222,7 +235,9 @@ class _ControlPlaneBase:
             values[name] = value
         return values
 
-    def _adopt_authentication(self, response: ForgeResponse[Any]) -> ForgeResponse[JsonObject]:
+    def _adopt_authentication(self, response: ForgeResponse[Any], *, revision: int | None = None) -> ForgeResponse[JsonObject]:
+        if revision is not None and revision != self._session_revision:
+            raise ForgeSessionError("Session changed while authentication was pending; discard the stale response")
         verified = _object_response(response)
         payload = dict(verified.data)
         token = payload.pop("access_token", None)
@@ -553,6 +568,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         expect_json: bool = True,
         max_response_bytes: int | None = None,
     ) -> ForgeResponse[Any]:
+        revision = self._session_revision
         try:
             return await self._transport.request(
                 method,
@@ -565,7 +581,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
                 max_response_bytes=max_response_bytes,
             )
         except ForgeHTTPError as exc:
-            if authenticated and exc.status_code == 401:
+            if authenticated and exc.status_code == 401 and revision == self._session_revision:
                 self.clear_session()
             raise
 
@@ -580,6 +596,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         display_name: str,
     ) -> ForgeResponse[JsonObject]:
         self.clear_session()
+        revision = self._session_revision
         token = _credential(setup_token, name="setup token", minimum=32)
         response = await self._request(
             "POST",
@@ -588,17 +605,18 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
             authenticated=False,
             extra_headers={"X-Forge-Setup-Token": token},
         )
-        return self._adopt_authentication(response)
+        return self._adopt_authentication(response, revision=revision)
 
     async def login(self, username: str, password: str) -> ForgeResponse[JsonObject]:
         self.clear_session()
+        revision = self._session_revision
         response = await self._request(
             "POST",
             _control_path("auth", "login"),
             json_body=_profile_payload(username, password),
             authenticated=False,
         )
-        return self._adopt_authentication(response)
+        return self._adopt_authentication(response, revision=revision)
 
     async def register(
         self,
@@ -608,16 +626,19 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         display_name: str,
     ) -> ForgeResponse[JsonObject]:
         self.clear_session()
+        revision = self._session_revision
         payload = _profile_payload(username, password, display_name)
         payload["invitation"] = _credential(invitation, name="invitation", pattern=_INVITATION_TOKEN)
         response = await self._request("POST", _control_path("auth", "register"), json_body=payload, authenticated=False)
-        return self._adopt_authentication(response)
+        return self._adopt_authentication(response, revision=revision)
 
     async def logout(self) -> ForgeResponse[Any]:
+        revision = self._session_revision
         try:
             return await self._request("POST", _control_path("auth", "logout"), expect_json=False)
         finally:
-            self.clear_session()
+            if revision == self._session_revision:
+                self.clear_session()
 
     async def capabilities(self) -> ForgeResponse[JsonObject]:
         return _object_response(await self._request("GET", _control_path("capabilities")))
@@ -752,7 +773,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         return _object_response(await self._request("GET", _control_path("areas", area_id, "attachments"), params={"limit": limit}))
 
     async def upload_attachment(self, area_id: str, source: str | os.PathLike[str]) -> ForgeResponse[JsonObject]:
-        with _open_attachment(source, self.max_attachment_bytes) as (name, handle):
+        async with _open_attachment_async(source, self.max_attachment_bytes) as (name, handle):
             response = await self._request(
                 "POST",
                 _control_path("areas", area_id, "attachments"),
@@ -773,7 +794,7 @@ class AsyncEditorControlPlaneClient(_ControlPlaneBase):
         )
         if not isinstance(response.data, bytes):
             raise ForgeHTTPError(response.status_code, "Attachment response was not binary", response.request_id)
-        return _copy_response(response, _atomic_save(target, response.data))
+        return _copy_response(response, await run_io(_atomic_save, target, response.data))
 
     async def start_call(self, area_id: str, *, mode: str = "video") -> ForgeResponse[JsonObject]:
         return _object_response(await self._request("POST", _control_path("calls"), json_body={"area_id": area_id, "mode": mode}))

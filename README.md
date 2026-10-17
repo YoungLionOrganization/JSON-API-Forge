@@ -65,6 +65,8 @@ notes = asyncio.run(main())
 
 Bounded retries are opt-in. The retry/failover policy treats GET, HEAD, OPTIONS, PUT and DELETE as idempotent HTTP methods. Other methods, including POST/PATCH, need an explicit idempotency key before replay is permitted. The server endpoint must actually support idempotency; adding a header alone does not make arbitrary side effects replay-safe.
 
+JSON responses use Python integers and finite floating-point numbers. Non-standard `NaN`/`Infinity` constants, exponent values outside the supported finite float range (for example, `1e999`), and integers rejected by the interpreter's configured digit limit produce `ForgeHTTPError` with the original response status and request ID. Finite numbers and JSON `null` retain their usual Python values.
+
 ## Editor control-plane client
 
 ```python
@@ -82,9 +84,15 @@ The control-plane clients cover founder setup, invitation enrollment, profiles, 
 
 Security defaults include HTTPS-only remote URLs, no ambient proxy inheritance, no redirects or retained cookies, strict same-origin paths, exact token formats, bounded response bodies, non-symlink attachment snapshots and atomic downloads. WebRTC call tickets are placed in a URL fragment for the local call client, never in an HTTP query. v0.5.2 uses the revision 2 HTTP signaling call client.
 
+Async attachment snapshots, multipart file reads and atomic download writes run in worker threads so slow storage does not freeze other async tasks. Cancellation waits for an active disk operation to finish before closing its file or returning. If cancellation arrives during the atomic save, the destination may already contain the complete download when cancellation is reported; no background writer remains after that report.
+
+The async control-plane client discards an authentication response with `ForgeSessionError` if the session changed while it was pending, including sign-out, client close or a newer sign-in. An old request's unauthorized/logout response cannot clear a newer session.
+
 ## Cluster and optional integrations
 
 `ForgeCluster` and `AsyncForgeCluster` provide deterministic routing, circuit breakers, bounded bulk work and idempotency-gated failover across multiple Forge endpoints.
+
+Cluster shutdown attempts every client close and reports the first error after cleanup finishes. Async shutdown also finishes cleanup before propagating caller cancellation. Bulk and health operations cancel and drain their owned siblings before returning a cancelled result; worker/item counts and integer routing policies are checked before work starts.
 
 YoungLion/DDM adapters remain optional:
 

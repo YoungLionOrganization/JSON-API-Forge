@@ -8,7 +8,9 @@ from typing import Any
 
 def safe_error_text(value: Any) -> str:
     """Bound printable diagnostics; structured HTTP detail remains available separately."""
-    result = str(value)[:4096]
+    # Truncating first can remove the final @ from URL credentials and leave
+    # their private prefix visible. Redact the complete field, then bound it.
+    result = str(value)
     result = re.sub(r"(?i)(https?://)[^/\s@]+@", r"\1[redacted]@", result)
     result = re.sub(r"(?i)\bBearer\s+[^\s,;\"']+", "Bearer [redacted]", result)
     result = re.sub(
@@ -16,7 +18,7 @@ def safe_error_text(value: Any) -> str:
         r"\1[redacted]",
         result,
     )
-    return "".join(" " if unicodedata.category(char) in {"Cc", "Cf"} else char for char in result)
+    return "".join(" " if unicodedata.category(char) in {"Cc", "Cf"} else char for char in result[:4096])
 
 
 class ForgeError(RuntimeError):

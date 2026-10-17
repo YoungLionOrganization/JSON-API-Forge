@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased maintenance
+
+- Reject non-standard JSON number constants and numbers outside the supported finite float range; report bounded integer decoder failures as observable HTTP errors instead of leaking raw parser exceptions.
+- Redact complete URL credentials before truncating diagnostics so a long password cannot expose its prefix; retain the final output limit after replacements.
+- Finish single async HTTP response and transport cleanup before returning cancellation, including interrupted body reads, multipart uploads and repeated cancellation during connection release.
+- Reject unsafe manifest records and Windows junctions before enumerating or hashing release sources, while continuing to exclude build artifacts from extracted-source scans.
+- Close every cluster client even if one close fails; finish async client cleanup before reporting errors or cancellation and drain cancelled health/bulk siblings safely.
+- Validate integer bulk bounds, worker counts, routing weights and failure thresholds before consuming work.
+- Accept valid JSON `null` responses in sync/async requests instead of incorrectly reporting HTTP 200 as malformed JSON.
+- Protect async sessions against delayed authentication, logout and unauthorized responses so stale requests cannot restore a signed-out session or replace/clear a newer account.
+- Move async attachment snapshot, multipart file reads and atomic download writes off the event loop; drain active disk workers before returning cancellation or closing owned files.
+- Never replay multipart file bodies across cluster endpoints, including PUT and keyed POST requests.
+- Cancel and drain sibling operations when an async bulk item is cancelled, so no owned operation continues after bulk returns.
+- Reject non-integer async concurrency values before consuming work; fractional semaphore counts could otherwise bypass the parallelism limit.
+- Keep these fixes separate from the frozen v0.5.2 publication candidate.
+
 ## 0.5.2 — 2026-10-11
 
 - Add lazy synchronous and asynchronous cursor/offset traversal with resumable cursors, strict page validation, cycle detection, item bounds and cancellation propagation.
