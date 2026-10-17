@@ -72,7 +72,30 @@ LinearDraft202012Validator = extend(
 )
 
 
+def _check_finite_json(instance: Any, label: str) -> None:
+    # Walk containers lazily so wide arrays use depth-bounded traversal state.
+    pending = [(iter(((None, instance),)), ())]
+    while pending:
+        values, path = pending[-1]
+        try:
+            key, value = next(values)
+        except StopIteration:
+            pending.pop()
+            continue
+        child_path = path if key is None else (*path, str(key))
+        if isinstance(value, float) and not math.isfinite(value):
+            raise HTTPException(
+                status_code=422,
+                detail={"schema": label, "errors": [{"path": ".".join(child_path) or "$", "message": "JSON numbers must be finite"}]},
+            )
+        if isinstance(value, dict):
+            pending.append((iter(value.items()), child_path))
+        elif isinstance(value, list):
+            pending.append((iter(enumerate(value)), child_path))
+
+
 def validate_json_schema(instance: Any, schema: dict[str, Any] | None, *, label: str = "request") -> None:
+    _check_finite_json(instance, label)
     if not schema:
         return
     validator = LinearDraft202012Validator(schema)

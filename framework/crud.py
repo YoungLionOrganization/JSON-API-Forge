@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from itertools import groupby
 from typing import Any, Literal
 
 from fastapi import HTTPException, Request
-from sqlalchemy import DateTime, and_, delete, func, insert, or_, select, update
+from sqlalchemy import DateTime, Float, Numeric, and_, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.schema import Table
 
@@ -44,6 +46,7 @@ def _write_payload(
     *,
     schema=None,
     mode: Literal["create", "patch", "replace"] = "patch",
+    dialect=None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="Resource payload must be a JSON object")
@@ -71,12 +74,16 @@ def _write_payload(
             elif not has_default:
                 raise HTTPException(status_code=422, detail={"missing_required_fields": [name]})
     for name, value in list(data.items()):
+        if isinstance(table.c[name].type, (Float, Numeric)):
+            # Preserve the existing driver conversion of numeric strings, but
+            # reject values that would become NULL/Infinity after committing.
+            _coerce_for_column(table.c[name], value, dialect=dialect)
         if isinstance(value, str) and isinstance(table.c[name].type, DateTime):
             data[name] = _coerce_for_column(table.c[name], value)
     return data
 
 
-def _coerce_for_column(column, value: Any):
+def _coerce_for_column(column, value: Any, *, dialect=None):
     if value is None:
         return None
     try:
@@ -103,8 +110,18 @@ def _coerce_for_column(column, value: Any):
                 elif parsed.tzinfo is not None and not getattr(column.type, "timezone", False):
                     parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
             return parsed
-        return pytype(value)
-    except (TypeError, ValueError) as exc:
+        converted = pytype(value)
+        if (isinstance(converted, float) and not math.isfinite(converted)) or (
+            isinstance(converted, Decimal) and not converted.is_finite()
+        ):
+            raise ValueError("Numeric value must be finite")
+        if dialect is not None and isinstance(column.type, (Float, Numeric)):
+            processor = column.type.dialect_impl(dialect).bind_processor(dialect)
+            bound = processor(value) if processor is not None else converted
+            if (isinstance(bound, float) and not math.isfinite(bound)) or (isinstance(bound, Decimal) and not bound.is_finite()):
+                raise ValueError("Numeric value exceeds the database driver range")
+        return converted
+    except (TypeError, ValueError, OverflowError, InvalidOperation) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid value for field {column.name}") from exc
 
 
@@ -322,7 +339,7 @@ def _inject_policy_fields(data: dict[str, Any], resource: ResourceConfig, princi
 
 
 async def create_row(engine, table: Table, resource: ResourceConfig, principal: Principal, payload: dict[str, Any]):
-    data = _write_payload(payload, resource, table, schema=resource.create_schema, mode="create")
+    data = _write_payload(payload, resource, table, schema=resource.create_schema, mode="create", dialect=getattr(engine, "dialect", None))
     _inject_policy_fields(data, resource, principal)
     try:
         async with engine.begin() as conn:
@@ -342,7 +359,9 @@ async def batch_create_rows(engine, table: Table, resource: ResourceConfig, prin
         raise HTTPException(status_code=422, detail=f"Batch size must be 1..{resource.max_batch_size}")
     values = []
     for payload in payloads:
-        data = _write_payload(payload, resource, table, schema=resource.create_schema, mode="create")
+        data = _write_payload(
+            payload, resource, table, schema=resource.create_schema, mode="create", dialect=getattr(engine, "dialect", None)
+        )
         _inject_policy_fields(data, resource, principal)
         values.append(data)
     try:
@@ -366,7 +385,14 @@ async def update_row(
     *,
     replace: bool = False,
 ):
-    data = _write_payload(payload, resource, table, schema=resource.update_schema, mode="replace" if replace else "patch")
+    data = _write_payload(
+        payload,
+        resource,
+        table,
+        schema=resource.update_schema,
+        mode="replace" if replace else "patch",
+        dialect=getattr(engine, "dialect", None),
+    )
     if not data:
         raise HTTPException(status_code=422, detail="No writable fields supplied")
     pk = table.c[resource.primary_key]
