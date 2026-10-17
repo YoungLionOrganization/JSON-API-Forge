@@ -77,6 +77,8 @@ private:
     void updateActions();
     void refreshProject();
     void requestMessages();
+    void requestAttachments();
+    void requestNotes();
     [[nodiscard]] bool acceptsWorkspaceOperation(const QString &operation) const;
 
     ApiClient *m_api = nullptr;
@@ -110,6 +112,9 @@ private:
     bool m_callDiscovery = false;
     bool m_callClientReady = false;
     bool m_extrasLoading = false;
+    QString m_attachmentsOperation;
+    QString m_notesOperation;
+    quint64 m_listRequestSerial = 0;
     QTreeWidget *m_attachments = nullptr;
     QTreeWidget *m_databaseTree = nullptr;
     QTableWidget *m_rows = nullptr;

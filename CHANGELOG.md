@@ -13,6 +13,7 @@
 - Reject unsafe manifest paths and malformed SHA-256 records before scanning or hashing; block symbolic links and Windows reparse/junction boundaries without entering them during source fallback scans.
 - Discard responses, retries and pending attachment work from an earlier account session so late login/profile/download results cannot replace credentials, sign out a new account or save private files after the session changes.
 - Correlate message refresh requests individually so returning to a space cannot let an older snapshot or error overwrite its current conversation.
+- Correlate shared-file and note list refreshes individually so returning to a space/project, or refreshing notes twice, cannot let an older response replace the current list or display an obsolete error.
 - Keep these changes separate from the frozen v0.5.2 publication candidate.
 
 ## [0.5.2] — 2026-10-04

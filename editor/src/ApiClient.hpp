@@ -67,10 +67,10 @@ public:
                     const QString &visibility, int minimumRank);
     void fetchMessages(const QString &areaId, const QString &operation = {});
     void postMessage(const QString &areaId, const QString &body, bool announcement = false);
-    void fetchAttachments(const QString &areaId);
+    void fetchAttachments(const QString &areaId, const QString &operation = {});
     void uploadAttachment(const QString &areaId, const QString &filePath, qsizetype maxBytes);
     void downloadAttachment(const QString &attachmentId, const QString &targetPath, qsizetype maxBytes, const QString &sha256 = {});
-    void fetchNotes(const QString &project);
+    void fetchNotes(const QString &project, const QString &operation = {});
     void createNote(const QString &project, const QString &areaId, const QString &title, const QString &body,
                     const QString &visibility, int minimumRank = 0);
     void fetchDatabases(const QString &project);

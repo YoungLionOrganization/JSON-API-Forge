@@ -963,9 +963,9 @@ void ApiClient::postMessage(const QString &areaId, const QString &body, bool ann
                                                            : QStringLiteral("message")}});
 }
 
-void ApiClient::fetchAttachments(const QString &areaId)
+void ApiClient::fetchAttachments(const QString &areaId, const QString &operation)
 {
-    send(QStringLiteral("team-attachments:%1").arg(areaId), QNetworkAccessManager::GetOperation,
+    send(operation.isEmpty() ? QStringLiteral("team-attachments:%1").arg(areaId) : operation, QNetworkAccessManager::GetOperation,
          {QStringLiteral("areas"), areaId, QStringLiteral("attachments")}, {}, {}, true, {}, RequestProfile::Background);
 }
 
@@ -1173,11 +1173,11 @@ void ApiClient::downloadAttachment(const QString &attachmentId, const QString &t
             });
 }
 
-void ApiClient::fetchNotes(const QString &project)
+void ApiClient::fetchNotes(const QString &project, const QString &operation)
 {
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("project"), project);
-    send(QStringLiteral("team-notes:%1").arg(project), QNetworkAccessManager::GetOperation, {QStringLiteral("notes")}, {},
+    send(operation.isEmpty() ? QStringLiteral("team-notes:%1").arg(project) : operation, QNetworkAccessManager::GetOperation, {QStringLiteral("notes")}, {},
          query);
 }
 

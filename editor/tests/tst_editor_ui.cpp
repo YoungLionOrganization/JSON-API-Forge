@@ -179,6 +179,8 @@ private slots:
     void workspaceIgnoresStaleResponsesAndKeepsAreaDrafts();
     void messageSnapshotCannotOverwriteReturnedSpace_data();
     void messageSnapshotCannotOverwriteReturnedSpace();
+    void workspaceListSnapshotCannotOverwriteCurrent_data();
+    void workspaceListSnapshotCannotOverwriteCurrent();
     void noteAcknowledgementPreservesNewerEdits();
     void resetClearsSessionData();
     void founderWildcardPermissions();
@@ -774,6 +776,66 @@ void EditorUiTests::messageSnapshotCannotOverwriteReturnedSpace()
     QCOMPARE(view->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("Current snapshot"));
     QTest::qWait(300);
     QCOMPARE(view->messageAt(0).value(QStringLiteral("body")).toString(), QStringLiteral("Current snapshot"));
+    QVERIFY(status.isEmpty());
+}
+
+void EditorUiTests::workspaceListSnapshotCannotOverwriteCurrent_data()
+{
+    QTest::addColumn<QString>("listKind");
+    QTest::addColumn<bool>("oldFailure");
+    for (const auto &kind : {QStringLiteral("attachments"), QStringLiteral("notes"), QStringLiteral("notes-refresh")}) {
+        QTest::newRow(qPrintable(kind + QStringLiteral("-snapshot"))) << kind << false;
+        QTest::newRow(qPrintable(kind + QStringLiteral("-error"))) << kind << true;
+    }
+}
+
+void EditorUiTests::workspaceListSnapshotCannotOverwriteCurrent()
+{
+    QFETCH(QString, listKind);
+    QFETCH(bool, oldFailure);
+    const bool attachments = listKind == QStringLiteral("attachments");
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    int reads = 0;
+    server.respond = [&](const QByteArray &request) {
+        const bool target = attachments ? request.startsWith("GET /__forge/editor/v1/areas/alpha/attachments ")
+            : request.startsWith("GET /__forge/editor/v1/notes?project=Alpha ");
+        if (!target) { return WorkspaceServer::Response{}; }
+        ++reads;
+        const auto label = reads == 1 ? QStringLiteral("Old snapshot") : QStringLiteral("Current snapshot");
+        const auto key = attachments ? QStringLiteral("attachments") : QStringLiteral("notes");
+        const QJsonObject item{{attachments ? QStringLiteral("original_name") : QStringLiteral("title"), label}};
+        return WorkspaceServer::Response{QJsonDocument(QJsonObject{{key, QJsonArray{item}}}).toJson(QJsonDocument::Compact),
+            oldFailure && reads == 1 ? QByteArray("503 Service Unavailable") : QByteArray("200 OK"), reads == 1 ? 300 : 10};
+    };
+    ApiClient api;
+    QString error;
+    QVERIFY(api.configure(server.url(), TestSession, true, &error));
+    EditorPreferences preferences;
+    preferences.safeGetRetries = 0;
+    api.applyPreferences(preferences);
+    TeamWorkspace team(&api);
+    team.setProject(QStringLiteral("Alpha"));
+    team.setCapabilities(capabilities({QStringLiteral("areas.read"), attachments ? QStringLiteral("attachments.read") : QStringLiteral("notes.read")}));
+    if (attachments) { deliver(api, QStringLiteral("team-areas:Alpha"), spaces()); }
+    else { team.refreshAll(); }
+    QVERIFY(waitUntil([&] { return reads == 1; }));
+    QSignalSpy status(&team, &TeamWorkspace::statusMessage);
+    if (attachments) {
+        auto *areas = team.findChild<QListWidget *>(QStringLiteral("areaList"));
+        areas->setCurrentRow(1);
+        areas->setCurrentRow(0);
+    } else if (listKind == QStringLiteral("notes-refresh")) {
+        team.refreshAll();
+    } else {
+        team.setProject(QStringLiteral("Beta"));
+        team.setProject(QStringLiteral("Alpha"));
+    }
+    auto *tree = team.findChild<QTreeWidget *>(attachments ? QStringLiteral("attachmentList") : QStringLiteral("noteList"));
+    QVERIFY(waitUntil([&] { return reads == 2 && tree->topLevelItemCount() == 1; }));
+    QCOMPARE(tree->topLevelItem(0)->text(0), QStringLiteral("Current snapshot"));
+    QTest::qWait(350);
+    QCOMPARE(tree->topLevelItem(0)->text(0), QStringLiteral("Current snapshot"));
     QVERIFY(status.isEmpty());
 }
 
