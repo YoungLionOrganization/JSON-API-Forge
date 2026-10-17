@@ -32,8 +32,8 @@ def test_malformed_json_remains_rejected(content) -> None:
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-@pytest.mark.parametrize("content", [b"NaN", b"Infinity", b"-Infinity", b'{"items": [{"value": NaN}]}'])
-def test_non_json_number_constants_are_rejected_and_observed(content, asynchronous) -> None:
+@pytest.mark.parametrize("content", [b"NaN", b"Infinity", b"-Infinity", b'{"items": [{"value": NaN}]}', b"1e999", b'{"value": -1e999}'])
+def test_non_finite_response_numbers_are_rejected_and_observed(content, asynchronous) -> None:
     events = []
     transport = httpx.MockTransport(lambda _: httpx.Response(200, content=content, headers={"X-Request-ID": "invalid-number"}))
 
@@ -50,6 +50,22 @@ def test_non_json_number_constants_are_rejected_and_observed(content, asynchrono
     assert caught.value.status_code == 200
     assert caught.value.request_id == "invalid-number"
     assert len(events) == 1 and events[0].status_code == 200
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("content, expected", [(b"1.25", 1.25), (b"1.7976931348623157e308", 1.7976931348623157e308)])
+def test_finite_response_numbers_preserve_supported_float_range(content, expected, asynchronous) -> None:
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, content=content))
+
+    async def run():
+        async with AsyncForgeClient("https://forge.test", transport=transport) as client:
+            return (await client.request("GET", "operation")).data
+
+    if asynchronous:
+        assert asyncio.run(run()) == expected
+    else:
+        with ForgeClient("https://forge.test", transport=transport) as client:
+            assert client.request("GET", "operation").data == expected
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

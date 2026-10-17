@@ -2,7 +2,7 @@
 
 ## Unreleased maintenance
 
-- Reject non-standard JSON number constants and report bounded integer decoder failures as observable HTTP errors instead of leaking raw parser exceptions.
+- Reject non-standard JSON number constants and numbers outside the supported finite float range; report bounded integer decoder failures as observable HTTP errors instead of leaking raw parser exceptions.
 - Redact complete URL credentials before truncating diagnostics so a long password cannot expose its prefix; retain the final output limit after replacements.
 - Finish single async HTTP response and transport cleanup before returning cancellation, including interrupted body reads, multipart uploads and repeated cancellation during connection release.
 - Reject unsafe manifest records and Windows junctions before enumerating or hashing release sources, while continuing to exclude build artifacts from extracted-source scans.

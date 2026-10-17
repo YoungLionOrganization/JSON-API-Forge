@@ -65,6 +65,8 @@ notes = asyncio.run(main())
 
 Bounded retries are opt-in. The retry/failover policy treats GET, HEAD, OPTIONS, PUT and DELETE as idempotent HTTP methods. Other methods, including POST/PATCH, need an explicit idempotency key before replay is permitted. The server endpoint must actually support idempotency; adding a header alone does not make arbitrary side effects replay-safe.
 
+JSON responses use Python integers and finite floating-point numbers. Non-standard `NaN`/`Infinity` constants, exponent values outside the supported finite float range (for example, `1e999`), and integers rejected by the interpreter's configured digit limit produce `ForgeHTTPError` with the original response status and request ID. Finite numbers and JSON `null` retain their usual Python values.
+
 ## Editor control-plane client
 
 ```python

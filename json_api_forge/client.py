@@ -155,11 +155,18 @@ def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"Invalid JSON number constant: {value}")
 
 
+def _finite_json_float(value: str) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("JSON number exceeds the supported finite float range")
+    return result
+
+
 def _decode_response(response: httpx.Response, content: bytes, *, expect_json: bool) -> ForgeResponse[Any]:
     detail: Any
     valid_json = True
     try:
-        decoded = json.loads(content, parse_constant=_reject_json_constant) if content else None
+        decoded = json.loads(content, parse_constant=_reject_json_constant, parse_float=_finite_json_float) if content else None
     except (ValueError, RecursionError):
         # ValueError also covers the interpreter's bounded integer conversion,
         # UnicodeDecodeError and JSONDecodeError; keep these HTTP failures observable.
