@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import sys
+
 import httpx
 import pytest
 
@@ -26,3 +29,51 @@ def test_malformed_json_remains_rejected(content) -> None:
     with ForgeClient("https://forge.test", transport=httpx.MockTransport(lambda _: httpx.Response(200, content=content))) as client:
         with pytest.raises(ForgeHTTPError, match="non-JSON"):
             client.request("GET", "operation")
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("content", [b"NaN", b"Infinity", b"-Infinity", b'{"items": [{"value": NaN}]}'])
+def test_non_json_number_constants_are_rejected_and_observed(content, asynchronous) -> None:
+    events = []
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, content=content, headers={"X-Request-ID": "invalid-number"}))
+
+    async def run():
+        async with AsyncForgeClient("https://forge.test", transport=transport, observer=events.append) as client:
+            await client.request("GET", "operation")
+
+    with pytest.raises(ForgeHTTPError, match="non-JSON") as caught:
+        if asynchronous:
+            asyncio.run(run())
+        else:
+            with ForgeClient("https://forge.test", transport=transport, observer=events.append) as client:
+                client.request("GET", "operation")
+    assert caught.value.status_code == 200
+    assert caught.value.request_id == "invalid-number"
+    assert len(events) == 1 and events[0].status_code == 200
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("status", [200, 503])
+def test_integer_decoder_policy_failures_keep_http_error_contract(status, asynchronous) -> None:
+    maximum = getattr(sys, "get_int_max_str_digits", lambda: 0)()
+    if not maximum:
+        pytest.skip("This Python interpreter does not limit integer string conversion")
+    events = []
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(status, content=b"9" * (maximum + 1), headers={"X-Request-ID": "bounded-integer"})
+    )
+
+    async def run():
+        async with AsyncForgeClient("https://forge.test", transport=transport, observer=events.append) as client:
+            await client.request("GET", "operation")
+
+    with pytest.raises(ForgeHTTPError) as caught:
+        if asynchronous:
+            asyncio.run(run())
+        else:
+            with ForgeClient("https://forge.test", transport=transport, observer=events.append) as client:
+                client.request("GET", "operation")
+    assert caught.value.status_code == status
+    assert caught.value.request_id == "bounded-integer"
+    assert len(str(caught.value)) < 2300
+    assert len(events) == 1 and events[0].status_code == status

@@ -151,12 +151,18 @@ def _headers(
     return values
 
 
+def _reject_json_constant(value: str) -> Any:
+    raise ValueError(f"Invalid JSON number constant: {value}")
+
+
 def _decode_response(response: httpx.Response, content: bytes, *, expect_json: bool) -> ForgeResponse[Any]:
     detail: Any
     valid_json = True
     try:
-        decoded = json.loads(content) if content else None
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+        decoded = json.loads(content, parse_constant=_reject_json_constant) if content else None
+    except (ValueError, RecursionError):
+        # ValueError also covers the interpreter's bounded integer conversion,
+        # UnicodeDecodeError and JSONDecodeError; keep these HTTP failures observable.
         decoded = None
         valid_json = False
     if response.is_redirect:

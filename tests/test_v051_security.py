@@ -7,6 +7,7 @@ import pytest
 from json_api_forge import AsyncForgeClient, ForgeClient, ForgeHTTPError, RetryPolicy
 from json_api_forge.client import _base_url, _headers, _relative_path
 from json_api_forge.control_plane import _credential
+from json_api_forge.errors import safe_error_text
 
 
 @pytest.mark.parametrize(
@@ -69,6 +70,22 @@ def test_query_is_sent_but_not_exposed_to_observer_and_errors_are_redacted():
     assert "secret" not in str(error)
     assert "\n" not in str(error)
     assert error.detail["password"] == "sensitive"
+
+
+def test_long_url_credentials_are_redacted_before_diagnostic_truncation():
+    secret = "credential-must-stay-private" * 200
+    detail = f"Upstream https://account:{secret}@example.test/path returned an error"
+    rendered = safe_error_text(detail)
+    assert "credential-must-stay-private" not in rendered
+    assert "[redacted]@example.test/path" in rendered
+    assert len(rendered) <= 4096
+
+
+def test_error_text_stays_bounded_after_replacing_early_credentials():
+    detail = "https://a@example.test/path " + "public detail " * 1000
+    rendered = safe_error_text(detail)
+    assert "https://a@" not in rendered
+    assert len(rendered) <= 4096
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
