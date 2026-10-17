@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
+import re
+import stat
 import subprocess
 from pathlib import Path
 
@@ -20,7 +23,7 @@ def digest(path: Path) -> str:
 
 def _release_path(relative: str) -> bool:
     parts = relative.split("/")
-    if not relative or any(part in {"", ".", ".."} for part in parts) or "\\" in relative:
+    if not relative or any(part in {"", ".", ".."} for part in parts) or "\\" in relative or ":" in relative:
         raise ValueError(f"Unsafe release path: {relative!r}")
     if any(ord(char) < 32 or ord(char) == 127 for char in relative):
         raise ValueError(f"Control character in release path: {relative!r}")
@@ -51,6 +54,42 @@ def _release_path(relative: str) -> bool:
     )
 
 
+def _checked_file(relative: str) -> Path:
+    if not _release_path(relative):
+        raise ValueError(f"Ignored release path: {relative}")
+    path = ROOT / relative
+    current = path
+    while current != ROOT:
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
+                raise ValueError(f"Release paths may not contain symbolic links or reparse points: {relative}")
+        current = current.parent
+    return path
+
+
+def _exported_files() -> set[str]:
+    def failed_scan(exc):
+        raise exc
+
+    candidates = set()
+    for directory, folders, names in os.walk(ROOT, followlinks=False, onerror=failed_scan):
+        allowed = []
+        for name in folders:
+            relative = (Path(directory) / name).relative_to(ROOT).as_posix()
+            if _release_path(relative):
+                _checked_file(relative)
+                allowed.append(name)
+        # Reject linked parents before descending, including Windows junctions
+        # that is_symlink/followlinks=False alone do not cover.
+        folders[:] = allowed
+        candidates.update((Path(directory) / name).relative_to(ROOT).as_posix() for name in names)
+    return candidates
+
+
 def release_files() -> set[str]:
     try:
         repository = subprocess.check_output(
@@ -68,14 +107,12 @@ def release_files() -> set[str]:
         ).decode()
         candidates = {value for value in raw.split(chr(0)) if value}
     except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
-        candidates = {path.relative_to(ROOT).as_posix() for path in ROOT.rglob("*")}
+        candidates = _exported_files()
     result = set()
     for relative in candidates:
         if not _release_path(relative):
             continue
-        path = ROOT / relative
-        if path.is_symlink():
-            raise ValueError(f"Release files may not be symbolic links: {relative}")
+        path = _checked_file(relative)
         if path.is_file():
             result.add(relative)
     return result
@@ -104,6 +141,12 @@ def main(argv: list[str] | None = None) -> int:
             d, rel = line.split("  ", 1)
         except ValueError as exc:
             raise SystemExit(f"Malformed manifest line {n}") from exc
+        try:
+            if not re.fullmatch(r"[0-9a-f]{64}", d) or not _release_path(rel):
+                raise ValueError("Invalid digest or ignored release path")
+            _checked_file(rel)
+        except ValueError as exc:
+            raise SystemExit(f"Unsafe manifest line {n}: {exc}") from exc
         if rel in expected:
             raise SystemExit(f"Duplicate manifest entry: {rel}")
         expected[rel] = d

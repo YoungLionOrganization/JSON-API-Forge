@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import math
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -145,16 +146,27 @@ class ResilientHTTPClient:
             raw = response.headers.get("Retry-After")
             if raw:
                 try:
-                    return min(max(float(raw), 0.0), 10.0)
+                    delay = float(raw)
+                    if math.isfinite(delay):
+                        return min(max(delay, 0.0), 10.0)
                 except ValueError:
                     pass
         return min(0.25 * (2**attempt), 2.0)
 
     async def _send_once(self, method: str, url: str, *, max_response_bytes: int | None = None, **kwargs) -> httpx.Response:
+        if max_response_bytes is not None:
+            # Decoders may allocate an entire expanded chunk before yielding it.
+            # A post-decode byte count therefore cannot bound compressed input.
+            headers = httpx.Headers(kwargs.get("headers"))
+            headers["Accept-Encoding"] = "identity"
+            kwargs["headers"] = headers
         request = self.client.build_request(method, url, **kwargs)
         response = await self.client.send(request, stream=True)
         try:
             if max_response_bytes is not None:
+                encoding = response.headers.get("content-encoding", "").strip().lower()
+                if encoding not in {"", "identity"}:
+                    raise ResponseTooLarge("Bounded upstream responses require identity content encoding")
                 raw_length = response.headers.get("content-length")
                 if raw_length:
                     try:
@@ -227,8 +239,12 @@ class ResilientHTTPClient:
             try:
                 response = await self._send_once(method, url, max_response_bytes=max_response_bytes, **kwargs)
                 if response.status_code not in _RETRYABLE_STATUS:
-                    response.raise_for_status()
+                    # A successful retry (or an ordinary client error) proves
+                    # the upstream is reachable again, even if an earlier
+                    # attempt opened the circuit inside this request.
+                    state.opened_at = None
                     state.failures = 0
+                    response.raise_for_status()
                     return response
                 response.raise_for_status()
                 state.failures = 0

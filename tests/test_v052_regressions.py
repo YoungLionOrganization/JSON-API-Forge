@@ -261,7 +261,9 @@ def test_http_gzip_and_dns_deadline(monkeypatch):
         await client.client.aclose()
         client.client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
         try:
-            response = await client.request("GET", "https://example.test", max_response_bytes=100)
+            # Unbounded explicit calls retain gzip decoding; bounded calls now
+            # negotiate identity and reject encodings before allocating output.
+            response = await client.request("GET", "https://example.test")
             assert response.json() == {"ok": True}
             assert "content-encoding" not in response.headers
             with pytest.raises(httpcore.ConnectTimeout):

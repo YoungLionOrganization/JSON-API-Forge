@@ -347,7 +347,8 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                 p = await principal_for(request, _rt)
                 require(p, _r.permissions.get("create", f"{_r.path}.create"))
                 value = await create_row(_rt.registry.engines[_r.database], _rt.registry.tables[_tk], _r, p, payload)
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             add_route(
@@ -366,7 +367,8 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                     p = await principal_for(request, _rt)
                     require(p, _r.permissions.get("create", f"{_r.path}.create"))
                     value = await batch_create_rows(_rt.registry.engines[_r.database], _rt.registry.tables[_tk], _r, p, payload)
-                    await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                    if _rt.cache:
+                        await _rt.cache.invalidate_namespace(_ns)
                     return value
 
                 add_route(
@@ -387,7 +389,8 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                 value = await update_row(
                     _rt.registry.engines[_r.database], _rt.registry.tables[_tk], _r, p, item_id, payload, replace=False
                 )
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             async def put_handler(
@@ -396,7 +399,8 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                 p = await principal_for(request, _rt)
                 require(p, _r.permissions.get("update", f"{_r.path}.update"))
                 value = await update_row(_rt.registry.engines[_r.database], _rt.registry.tables[_tk], _r, p, item_id, payload, replace=True)
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             add_route(
@@ -421,7 +425,8 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                 p = await principal_for(request, _rt)
                 require(p, _r.permissions.get("delete", f"{_r.path}.delete"))
                 value = await delete_row(_rt.registry.engines[_r.database], _rt.registry.tables[_tk], _r, p, item_id)
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             add_route(
@@ -787,7 +792,8 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                 p = await principal_for(request, _rt)
                 require(p, _s.write_permission or _s.permission) if not _s.public_write else None
                 value = await _rt.data_sources.create(_s, payload)
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             async def data_patch(
@@ -796,21 +802,24 @@ def register_project_routes(*, app, runtime, principal_for, require, hide_intern
                 p = await principal_for(request, _rt)
                 require(p, _s.write_permission or _s.permission) if not _s.public_write else None
                 value = await _rt.data_sources.update(_s, item_id, payload, replace=False)
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             async def data_put(item_id: str, request: Request, payload: dict[str, Any] = Body(...), _s=source, _rt=runtime, _ns=namespace):
                 p = await principal_for(request, _rt)
                 require(p, _s.write_permission or _s.permission) if not _s.public_write else None
                 value = await _rt.data_sources.update(_s, item_id, payload, replace=True)
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             async def data_delete(item_id: str, request: Request, _s=source, _rt=runtime, _ns=namespace):
                 p = await principal_for(request, _rt)
                 require(p, _s.write_permission or _s.permission) if not _s.public_write else None
                 value = await _rt.data_sources.delete(_s, item_id)
-                await _rt.cache.invalidate_namespace(_ns) if _rt.cache else asyncio.sleep(0)
+                if _rt.cache:
+                    await _rt.cache.invalidate_namespace(_ns)
                 return value
 
             write_openapi = {"security": []} if source.public_write else None

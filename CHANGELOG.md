@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased maintenance
+
+- Reject non-finite JSON values before CRUD/RPC writes even without a schema, and reject numeric column conversions that produce NaN/Infinity. Cache-disabled mutations no longer create unawaited placeholder coroutines.
+- Encode idempotent operation replay results with the same JSON encoder as the first HTTP response, preserving binary text and numeric types; invalid JSON output rolls back before business changes commit. Stop collecting schema errors after the twenty-diagnostic response budget instead of materializing every invalid array element.
+- Keep media and Editor attachment writes, flushes, output closure and publication off the event loop; drain owned work under repeated cancellation. Failed uploads remove partial objects, while completed metadata transactions retain their matching files if the caller disconnects.
+- Negotiate identity encoding for bounded HTTP sources/JWKS and reject encoded bodies before decoding; ignore non-finite Retry-After values and close recovered request circuits.
+- Reject unsafe checksum manifest records and linked/reparse-point source parents, pruning ignored build directories before exported-source traversal.
+- Keep Editor document lock acquisition, validation, atomic publication and release in one IO worker. Cancelled saves stop waiting for busy locks and drain owned work before releasing the write mutex; slow disk work no longer blocks the event loop.
+- Reload malformed cache envelopes instead of returning internal metadata or failing requests on invalid, non-finite or overflowing expiry values.
+- Close Redis pub/sub resources when subscription setup fails or is cancelled, reject listeners that already stopped, and permit a clean subsequent connection attempt.
+- These changes are separate from the frozen v0.5.2 publication candidates.
+
 ## v0.5.2 (in development)
 
 - Normalize clipboard whitespace in release SHA input and add one-run publication of all four prepared component drafts, with full preflight, pinned source/asset manifests, controller CI gates and safe recovery after partial publication.

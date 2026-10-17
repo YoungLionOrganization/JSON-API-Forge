@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -27,6 +28,7 @@ from .doctor import is_weak_secret
 from .editor_call_client import call_client_page, parse_ice_servers
 from .editor_database import browse_rows, database_catalog
 from .editor_identity import EDITOR_PERMISSIONS, EditorAccess, EditorIdentityStore, EditorPrincipal
+from .io_tasks import finish_io, flush_file
 from .protection import client_ip, host_allowed, ip_allowed, request_is_https
 from .runtime import ProjectRuntime
 from .settings import Settings
@@ -428,15 +430,21 @@ class EditorControlPlane:
                     continue
                 shutil.copyfile(source, target_dir / source.name, follow_symlinks=False)
 
-    async def _acquire_project_lock(self, project: Path) -> FileLock:
+    def _acquire_project_lock(self, project: Path, cancelled: threading.Event) -> FileLock | None:
         self._lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         name = hashlib.sha256(str(project).encode("utf-8")).hexdigest() + ".lock"
-        lock = FileLock(self._lock_dir / name, timeout=10)
-        try:
-            await asyncio.to_thread(lock.acquire)
-        except FileLockTimeout as exc:
-            raise HTTPException(status_code=503, detail="Project is busy; retry the save", headers={"Retry-After": "1"}) from exc
-        return lock
+        lock = FileLock(self._lock_dir / name)
+        deadline = time.monotonic() + 10
+        while not cancelled.is_set():
+            try:
+                lock.acquire(timeout=0)
+                return lock
+            except FileLockTimeout as exc:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise HTTPException(status_code=503, detail="Project is busy; retry the save", headers={"Retry-After": "1"}) from exc
+                cancelled.wait(min(0.05, remaining))
+        return None
 
     def list_projects(self) -> list[dict]:
         if not self.apps_dir.exists():
@@ -512,6 +520,66 @@ class EditorControlPlane:
             "data_sources": len(configured.data_sources),
         }
 
+    def _write_document_sync(self, project, target, normalized, data, payload, cancelled):
+        # FileLock keeps ownership per thread: acquire, stage, publish and release
+        # must stay in one worker, including validation/atomic-write failures.
+        lock = self._acquire_project_lock(project, cancelled)
+        if lock is None:
+            return
+        try:
+            if cancelled.is_set():
+                return
+            self._assert_no_symlinks(project)
+            exists = target.is_file() and not target.is_symlink()
+            if exists:
+                current = target.read_bytes()
+                if payload.expected_sha256 != _digest(current):
+                    raise HTTPException(status_code=409, detail="Document changed on the server; reload before saving")
+            elif payload.expected_sha256 != "new":
+                raise HTTPException(status_code=409, detail="Document no longer exists; reload before saving")
+            elif target.exists():
+                raise HTTPException(status_code=409, detail="Document target is not a regular file")
+
+            with tempfile.TemporaryDirectory(prefix="forge-editor-") as temp_root:
+                staged = Path(temp_root) / "project"
+                self._stage_project(project, staged)
+                staged_target, _ = _document_path(
+                    staged,
+                    normalized,
+                    allow_hooks=self.settings.editor_allow_hooks,
+                    allow_graphs=self.settings.editor_allow_graphs,
+                )
+                staged_target.parent.mkdir(parents=True, exist_ok=True)
+                staged_target.write_bytes(data)
+                try:
+                    _load_project_dir(staged, dotenv=dotenv_values(self.apps_dir.parent / ".env"), default_name=project.name)
+                except RuntimeError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+            if cancelled.is_set():
+                return
+            target.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(data)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                if cancelled.is_set():
+                    return
+                os.replace(temporary, target)
+                if hasattr(os, "O_DIRECTORY"):
+                    directory_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
+            finally:
+                temporary.unlink(missing_ok=True)
+        finally:
+            lock.release()
+
     async def write_document(self, project_name: str, raw_path: str, payload: DocumentWrite) -> str:
         if self.settings.editor_read_only:
             raise HTTPException(status_code=403, detail="Editor API is read-only")
@@ -536,54 +604,27 @@ class EditorControlPlane:
                 _validate_graph_document(parsed)
 
         async with self._write_lock:
-            lock = await self._acquire_project_lock(project)
+            cancelled = threading.Event()
+            worker = asyncio.create_task(
+                asyncio.to_thread(self._write_document_sync, project, target, normalized, data, payload, cancelled),
+                name="forge-editor-save",
+            )
             try:
-                self._assert_no_symlinks(project)
-                exists = target.is_file() and not target.is_symlink()
-                if exists:
-                    current = target.read_bytes()
-                    if payload.expected_sha256 != _digest(current):
-                        raise HTTPException(status_code=409, detail="Document changed on the server; reload before saving")
-                elif payload.expected_sha256 != "new":
-                    raise HTTPException(status_code=409, detail="Document no longer exists; reload before saving")
-                elif target.exists():
-                    raise HTTPException(status_code=409, detail="Document target is not a regular file")
-
-                with tempfile.TemporaryDirectory(prefix="forge-editor-") as temp_root:
-                    staged = Path(temp_root) / "project"
-                    self._stage_project(project, staged)
-                    staged_target, _ = _document_path(
-                        staged,
-                        normalized,
-                        allow_hooks=self.settings.editor_allow_hooks,
-                        allow_graphs=self.settings.editor_allow_graphs,
-                    )
-                    staged_target.parent.mkdir(parents=True, exist_ok=True)
-                    staged_target.write_bytes(data)
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                cancelled.set()
+                # Keep both the worker and write mutex owned until cleanup ends.
+                # Further caller cancellations must not strand an open lock/file.
+                while not worker.done():
                     try:
-                        _load_project_dir(staged, dotenv=dotenv_values(self.apps_dir.parent / ".env"), default_name=project.name)
-                    except RuntimeError as exc:
-                        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-                target.parent.mkdir(parents=True, exist_ok=True)
-                fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
-                temporary = Path(temporary_name)
-                try:
-                    with os.fdopen(fd, "wb") as handle:
-                        handle.write(data)
-                        handle.flush()
-                        os.fsync(handle.fileno())
-                    os.replace(temporary, target)
-                    if hasattr(os, "O_DIRECTORY"):
-                        directory_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
-                        try:
-                            os.fsync(directory_fd)
-                        finally:
-                            os.close(directory_fd)
-                finally:
-                    temporary.unlink(missing_ok=True)
-            finally:
-                await asyncio.to_thread(lock.release)
+                        await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                if not worker.cancelled():
+                    worker.exception()
+                raise
         digest = _digest(data)
         log.info("editor write project=%s document=%s client_policy=authorized sha256=%s", project.name, normalized, digest[:12])
         return digest
@@ -1135,36 +1176,58 @@ def register_editor_api(
         temporary = Path(temporary_name)
         digest = hashlib.sha256()
         size = 0
+        published = False
+        registered = False
+
+        def publish():
+            nonlocal published
+            os.replace(temporary, target)
+            published = True
+
+        async def register(content_type):
+            nonlocal registered
+            metadata = await store_for(request).register_attachment(
+                access,
+                area_id=area_id,
+                original_name=raw_name,
+                stored_name=stored_name,
+                content_type=content_type,
+                size=size,
+                sha256=digest.hexdigest(),
+            )
+            registered = True
+            return metadata
+
         try:
-            with os.fdopen(fd, "wb") as handle:
+            try:
+                handle = os.fdopen(fd, "wb")
+            except BaseException:
+                os.close(fd)
+                raise
+            try:
                 while chunk := await upload.read(1024 * 1024):
                     size += len(chunk)
                     if size > settings.editor_max_attachment_bytes:
                         raise HTTPException(status_code=413, detail="Attachment exceeds the server policy limit")
                     digest.update(chunk)
-                    handle.write(chunk)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, target)
+                    await finish_io(asyncio.to_thread(handle.write, chunk))
+                await finish_io(asyncio.to_thread(flush_file, handle))
+            finally:
+                await finish_io(asyncio.to_thread(handle.close))
+            await finish_io(upload.close())
+            await finish_io(asyncio.to_thread(publish))
             content_type = (upload.content_type or mimetypes.guess_type(raw_name)[0] or "application/octet-stream")[:160]
             if any(character in content_type for character in "\r\n\0"):
                 content_type = "application/octet-stream"
-            try:
-                metadata = await store_for(request).register_attachment(
-                    access,
-                    area_id=area_id,
-                    original_name=raw_name,
-                    stored_name=stored_name,
-                    content_type=content_type,
-                    size=size,
-                    sha256=digest.hexdigest(),
-                )
-            except BaseException:
-                target.unlink(missing_ok=True)
-                raise
+            metadata = await finish_io(register(content_type))
         finally:
-            temporary.unlink(missing_ok=True)
-            await upload.close()
+            try:
+                if published and not registered:
+                    target.unlink(missing_ok=True)
+            finally:
+                temporary.unlink(missing_ok=True)
+                if not upload.file.closed:
+                    await finish_io(upload.close())
         await store_for(request).audit(
             access.principal,
             "attachment.create",

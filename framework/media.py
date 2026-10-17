@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -16,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .config import MediaConfig
 from .file_safety import confined_parent, relative_parts
+from .io_tasks import finish_io, flush_file
 from .security import media_table, media_usage_table
 
 log = logging.getLogger("json_api_forge.media")
@@ -49,8 +51,29 @@ class LocalMediaStore:
                 temporary = f".upload-{secrets.token_hex(16)}.tmp"
                 target = temporary if parent_fd is not None else parent / temporary
                 fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600, dir_fd=parent_fd)
+                published = False
+
+                def publish():
+                    nonlocal published
+                    try:
+                        if parent_fd is not None:
+                            os.link(temporary, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd, follow_symlinks=False)
+                        else:
+                            os.link(parent / temporary, parent / name)
+                    except FileExistsError as exc:
+                        raise HTTPException(409, "Media object already exists") from exc
+                    published = True
+                    if parent_fd is not None:
+                        os.fsync(parent_fd)
+
                 try:
-                    with os.fdopen(fd, "wb") as out:
+                    try:
+                        handle = os.fdopen(fd, "wb")
+                    except BaseException:
+                        os.close(fd)
+                        raise
+                    out = handle
+                    try:
                         while True:
                             chunk = await upload.read(1024 * 1024)
                             if not chunk:
@@ -59,21 +82,23 @@ class LocalMediaStore:
                             if total > max_bytes:
                                 raise HTTPException(status_code=413, detail="Media file exceeds configured maximum size")
                             digest.update(chunk)
-                            out.write(chunk)
-                        out.flush()
-                        os.fsync(out.fileno())
-                    try:
-                        if parent_fd is not None:
-                            os.link(temporary, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd, follow_symlinks=False)
-                            os.fsync(parent_fd)
-                        else:
-                            os.link(parent / temporary, parent / name)
-                    except FileExistsError as exc:
-                        raise HTTPException(409, "Media object already exists") from exc
+                            await finish_io(asyncio.to_thread(out.write, chunk))
+                        await finish_io(asyncio.to_thread(flush_file, out))
+                    finally:
+                        await finish_io(asyncio.to_thread(out.close))
+                    # Close the input before publication; cancelled input cleanup must
+                    # never strand a published file without metadata.
+                    await finish_io(upload.close())
+                    await finish_io(asyncio.to_thread(publish))
+                except BaseException:
+                    if published:
+                        os.unlink(name if parent_fd is not None else parent / name, dir_fd=parent_fd)
+                    raise
                 finally:
                     os.unlink(target, dir_fd=parent_fd)
         finally:
-            await upload.close()
+            if not upload.file.closed:
+                await finish_io(upload.close())
         return total, digest.hexdigest()
 
     def delete(self, storage_key: str) -> None:
@@ -148,7 +173,10 @@ async def save_media(*, engine, store: LocalMediaStore, project_slug: str, confi
     media_id = secrets.token_hex(16)
     storage_key = f"{project_slug}/{datetime.now(timezone.utc):%Y/%m}/{media_id}-{safe}"
     size, digest = await store.save_upload(upload, storage_key, config.max_upload_bytes)
-    try:
+    committed = False
+
+    async def register():
+        nonlocal committed
         if config.deduplicate:
             filt = (media_table.c.project_slug == project_slug) & (media_table.c.sha256 == digest)
             if config.deduplicate_scope == "owner":
@@ -175,13 +203,18 @@ async def save_media(*, engine, store: LocalMediaStore, project_slug: str, confi
             if config.max_owner_bytes:
                 await _reserve_usage(conn, project_slug, owner_subject, size, config.max_owner_bytes)
             await conn.execute(insert(media_table).values(**values))
+        committed = True
+        return values
+
+    try:
+        return await finish_io(register())
     except BaseException:
-        try:
-            store.delete(storage_key)
-        except Exception:
-            log.exception("Failed to clean an uncommitted media object media_id=%s", media_id)
+        if not committed:
+            try:
+                store.delete(storage_key)
+            except Exception:
+                log.exception("Failed to clean an uncommitted media object media_id=%s", media_id)
         raise
-    return values
 
 
 def media_api_meta(meta: dict, *, include_owner: bool = False) -> dict:

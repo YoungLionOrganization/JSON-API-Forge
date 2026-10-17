@@ -145,8 +145,9 @@ class RedisEventHub(EventHub):
         ready_waiter = asyncio.create_task(ready.wait(), name=f"forge-redis-ready-{channel}")
         try:
             done, _ = await asyncio.wait({ready_waiter, task}, timeout=5.0, return_when=asyncio.FIRST_COMPLETED)
-            if task in done and not ready.is_set():
+            if task in done:
                 task.result()
+                raise RuntimeError(f"Redis event listener stopped for channel {channel!r}")
             if ready_waiter in done and ready_waiter.result():
                 return
             if ready.is_set():
@@ -159,9 +160,9 @@ class RedisEventHub(EventHub):
 
     async def _listen(self, channel: str, ready: asyncio.Event) -> None:
         pubsub = self.redis.pubsub()
-        await pubsub.subscribe(self._redis_channel(channel))
-        ready.set()
         try:
+            await pubsub.subscribe(self._redis_channel(channel))
+            ready.set()
             async for message in pubsub.listen():
                 if message.get("type") != "message":
                     continue
@@ -173,7 +174,6 @@ class RedisEventHub(EventHub):
         except asyncio.CancelledError:
             raise
         finally:
-            ready.set()
             try:
                 await pubsub.unsubscribe(self._redis_channel(channel))
             finally:
