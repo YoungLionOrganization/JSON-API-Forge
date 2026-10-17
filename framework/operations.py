@@ -8,6 +8,7 @@ from time import monotonic
 from typing import Any
 
 from fastapi import HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import (
     Column,
     DateTime,
@@ -312,7 +313,9 @@ async def execute_idempotent_operation(
                 )
             )
             result = await _execute_on_connection(conn, operation, body=body, request=request, principal=principal)
-            payload = json.dumps(result, separators=(",", ":"), ensure_ascii=False, default=str)
+            # Store the same JSON representation FastAPI sends on the first
+            # response; repr() changes bytes and Decimal values on replay.
+            payload = json.dumps(jsonable_encoder(result), separators=(",", ":"), ensure_ascii=False, allow_nan=False)
             if len(payload.encode()) > operation.idempotency_max_response_bytes:
                 raise HTTPException(
                     status_code=413,

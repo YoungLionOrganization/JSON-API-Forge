@@ -2,6 +2,7 @@
 
 ## Unreleased maintenance
 
+- Encode idempotent operation replay results with the same JSON encoder as the first HTTP response, preserving binary text and numeric types; invalid JSON output rolls back before business changes commit. Stop collecting schema errors after the twenty-diagnostic response budget instead of materializing every invalid array element.
 - Keep media and Editor attachment writes, flushes, output closure and publication off the event loop; drain owned work under repeated cancellation. Failed uploads remove partial objects, while completed metadata transactions retain their matching files if the caller disconnects.
 - Negotiate identity encoding for bounded HTTP sources/JWKS and reject encoded bodies before decoding; ignore non-finite Retry-After values and close recovered request circuits.
 - Reject unsafe checksum manifest records and linked/reparse-point source parents, pruning ignored build directories before exported-source traversal.

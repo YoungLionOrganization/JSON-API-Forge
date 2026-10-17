@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from itertools import islice
 from typing import Any
 
 from fastapi import HTTPException, Request
@@ -75,7 +76,9 @@ def validate_json_schema(instance: Any, schema: dict[str, Any] | None, *, label:
     if not schema:
         return
     validator = LinearDraft202012Validator(schema)
-    errors = sorted(validator.iter_errors(instance), key=lambda e: list(e.absolute_path))
+    # Only collect diagnostics that can be returned. Large invalid arrays must
+    # not allocate every ValidationError merely to discard all but twenty.
+    errors = sorted(islice(validator.iter_errors(instance), 20), key=lambda e: list(e.absolute_path))
     if not errors:
         return
     details = []
