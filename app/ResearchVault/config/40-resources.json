@@ -329,7 +329,7 @@
           "max_length": 96
         },
         "payload": {
-          "type": "json"
+          "type": "text"
         },
         "idempotency_key": {
           "type": "string",

@@ -9,6 +9,7 @@ import os
 import stat
 import subprocess
 import tempfile
+import unicodedata
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +37,89 @@ MAX_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_FILE_BYTES = 16 * 1024 * 1024
 
 
+def _portable_name(name: str) -> str:
+    """Use names that stay distinct when extracted on supported filesystems."""
+    devices = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    devices.update(
+        f"{prefix}{suffix}" for prefix in ("COM", "LPT") for suffix in "123456789¹²³"
+    )
+    for part in name.split("/"):
+        if (
+            not part
+            or part in {".", ".."}
+            or part.endswith((".", " "))
+            or any(
+                char in '<>:"\\|?*' or ord(char) < 32 or ord(char) == 127
+                for char in part
+            )
+            or part.split(".", 1)[0].rstrip(" ").upper() in devices
+        ):
+            raise RuntimeError(f"bundle source has an unsafe filename: {name!r}")
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def _same_location(left: Path, right: Path) -> bool:
+    # Case and Unicode aliases must be refused even on a case-sensitive build
+    # host. samefile also covers actual filesystem aliases such as short names.
+    def key(path: Path) -> str:
+        return unicodedata.normalize("NFC", str(path)).casefold()
+
+    if key(left) == key(right):
+        return True
+    try:
+        return left.samefile(right)
+    except FileNotFoundError:
+        return False
+
+
+def _check_delivery_path(path: Path) -> None:
+    """Fail closed for local state even when Git/manifest checks ignore it."""
+    _portable_name(path.relative_to(ROOT).as_posix())
+    parts = tuple(part.casefold() for part in path.relative_to(ROOT).parts)
+    generated = {
+        ".git",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".venv",
+        "venv",
+        "node_modules",
+        "build",
+        "dist",
+        "htmlcov",
+    }
+    name = parts[-1]
+    if (
+        any(part in generated or part.endswith(".egg-info") for part in parts)
+        or (name.startswith(".env") and name != ".env.example")
+        or name.endswith(
+            (
+                ".pem",
+                ".key",
+                ".p12",
+                ".pfx",
+                ".db",
+                ".sqlite",
+                ".sqlite3",
+                ".log",
+                ".pyc",
+                ".pyo",
+            )
+        )
+        or any(marker in name for marker in (".db-", ".sqlite-", ".sqlite3-"))
+    ):
+        raise RuntimeError(f"bundle source contains private or generated state: {path}")
+
+
+def _is_link(metadata: os.stat_result) -> bool:
+    # Windows junctions are reparse points but are not reported as symlinks.
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
+
+
 def _source_date_epoch() -> int:
     configured = os.environ.get("SOURCE_DATE_EPOCH")
     if configured:
@@ -55,14 +139,15 @@ def _source_date_epoch() -> int:
 
 def _sources() -> list[tuple[Path, str, os.stat_result]]:
     app_root = ROOT / "app"
-    if app_root.is_symlink() or not app_root.is_dir():
+    if _is_link(app_root.lstat()) or not app_root.is_dir():
         raise RuntimeError("app root must be a real directory")
     paths = []
     for count, path in enumerate(app_root.rglob("*"), 1):
         if count > MAX_FILES * 2:
             raise RuntimeError("bundle source contains too many directory entries")
-        if path.is_symlink():
-            raise RuntimeError(f"bundle source contains symlinks: {path}")
+        _check_delivery_path(path)
+        if _is_link(path.lstat()):
+            raise RuntimeError(f"bundle source contains symlinks or junctions: {path}")
         if path.is_file():
             paths.append(path)
     paths.extend(
@@ -79,10 +164,19 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
 
     result: list[tuple[Path, str, os.stat_result]] = []
     names = set()
+    components: dict[str, str] = {}
     total = 0
     for path in paths:
+        _check_delivery_path(path)
+        for parent in path.parents:
+            if parent == ROOT:
+                break
+            if _is_link(parent.lstat()):
+                raise RuntimeError(
+                    f"bundle source parent contains symlinks or junctions: {parent}"
+                )
         metadata = path.lstat()
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        if _is_link(metadata) or not stat.S_ISREG(metadata.st_mode):
             raise RuntimeError(
                 f"bundle source must be a regular non-symlink file: {path}"
             )
@@ -92,25 +186,34 @@ def _sources() -> list[tuple[Path, str, os.stat_result]]:
         if total > MAX_TOTAL_BYTES:
             raise RuntimeError(f"bundle content exceeds {MAX_TOTAL_BYTES} bytes")
         name = path.relative_to(ROOT).as_posix()
-        if (
-            name.casefold() in names
-            or any(char in name for char in "\\:")
-            or any(ord(char) < 32 or ord(char) == 127 for char in name)
-        ):
+        key = _portable_name(name)
+        if key in names:
             raise RuntimeError(
                 f"bundle source has an unsafe or colliding filename: {name!r}"
             )
-        names.add(name.casefold())
+        parts = name.split("/")
+        for count in range(1, len(parts) + 1):
+            prefix = "/".join(parts[:count])
+            alias = unicodedata.normalize("NFC", prefix).casefold()
+            if alias in components and components[alias] != prefix:
+                raise RuntimeError(
+                    f"bundle source has a colliding path component: {prefix!r}"
+                )
+            components[alias] = prefix
+        names.add(key)
         result.append((path, name, metadata))
     return sorted(result, key=lambda item: item[1])
 
 
 def build(output: Path) -> None:
     output = output.resolve()
-    if output.is_relative_to((ROOT / "app").resolve()):
+    app_root = (ROOT / "app").resolve()
+    if any(_same_location(parent, app_root) for parent in (output, *output.parents)):
         raise RuntimeError("bundle output must not be inside app sources")
-    output.parent.mkdir(parents=True, exist_ok=True)
     sources = _sources()
+    if any(_same_location(output, path.resolve()) for path, _, _ in sources):
+        raise RuntimeError("bundle output must not replace a delivery source")
+    output.parent.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.fromtimestamp(
         min(max(_source_date_epoch(), 315_532_800), 4_354_819_198), tz=timezone.utc
     ).timetuple()[:6]

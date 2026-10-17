@@ -3,11 +3,20 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
+import stat
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "MANIFEST.sha256"
+
+
+def _linked(metadata) -> bool:
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
 
 
 def digest(path: Path) -> str:
@@ -24,6 +33,7 @@ def _release_path(relative: str) -> bool:
         not relative
         or any(part in {"", ".", ".."} for part in parts)
         or "\\" in relative
+        or ":" in relative
     ):
         raise ValueError(f"Unsafe release path: {relative!r}")
     if any(ord(char) < 32 or ord(char) == 127 for char in relative):
@@ -80,8 +90,19 @@ def release_files() -> set[str]:
         if not _release_path(relative):
             continue
         path = ROOT / relative
-        if path.is_symlink():
-            raise ValueError(f"Release files may not be symbolic links: {relative}")
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            continue
+        if _linked(metadata):
+            raise ValueError(f"Release files may not be links or junctions: {relative}")
+        for parent in path.parents:
+            if parent == ROOT:
+                break
+            if _linked(parent.lstat()):
+                raise ValueError(
+                    f"Release parent may not be a link or junction: {relative}"
+                )
         if path.is_file():
             result.add(relative)
     return result
@@ -118,6 +139,12 @@ def main(argv: list[str] | None = None) -> int:
             d, rel = line.split("  ", 1)
         except ValueError as exc:
             raise SystemExit(f"Malformed manifest line {n}") from exc
+        try:
+            allowed = _release_path(rel)
+        except ValueError as exc:
+            raise SystemExit(f"Unsafe manifest line {n}: {exc}") from exc
+        if not allowed or not re.fullmatch(r"[0-9a-f]{64}", d):
+            raise SystemExit(f"Invalid release path or digest on manifest line {n}")
         if rel in expected:
             raise SystemExit(f"Duplicate manifest entry: {rel}")
         expected[rel] = d

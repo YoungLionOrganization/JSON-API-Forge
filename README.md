@@ -59,6 +59,10 @@ The branch workflow checks out `main` separately, installs its real runtime, cop
 
 `scripts/build-example-bundle.py` produces a bounded, symlink-free, byte-for-byte deterministic ZIP containing `app/`, the catalog and README, legal/provenance documents, the two copy installers and an internal `SHA256SUMS`. GitHub Actions uploads the ZIP and its external checksum; it never publishes a Release automatically.
 
+Packaging refuses local environment files, keys/certificates, databases and their journals, logs, caches, dependency directories and build output inside examples, even when Git ignores them. Remove local runtime state from the source checkout before packaging; an existing archive stays intact on failure. Public `.env.example` templates and project-owned JSON seed files remain supported.
+
+Delivery filenames must be portable across Windows, macOS and Linux: trailing dots/spaces, Windows device names and forbidden characters are refused, along with case or Unicode normalization collisions. ZIP output paths must also remain separate from source files and `app/` under these alias rules, even on a case-sensitive build host.
+
 ### Contribute catalog changes
 
 Update `scripts/generate_example_catalog.py` for the 20 generated apps, then run:
