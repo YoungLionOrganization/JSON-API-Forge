@@ -9,9 +9,11 @@
 #include "VisualDesigner.hpp"
 
 #include <QApplication>
+#include <QAction>
 #include <QCryptographicHash>
 #include <QMimeData>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QComboBox>
 #include <QSpinBox>
 #include <QDockWidget>
@@ -163,6 +165,13 @@ private slots:
     void credentialHeaderParsingPreservesTokenCase();
     void disconnectRevokesSession();
     void repeatedVisualModePreservesEdits();
+    void visualUndoHistoryBelongsToDocument();
+    void localProjectRefreshPreservesDocumentAndSelection();
+    void remoteSavesRemainSerialized();
+    void failedRemoteSaveAllowsRetry();
+    void remoteSaveRevisionCheckBlocksNewWrites_data();
+    void remoteSaveRevisionCheckBlocksNewWrites();
+    void canceledRemoteSaveReleasesPendingState();
     void repeatedGraphModePreservesEdits();
     void openingDocumentDoesNotSerializePreviousMode();
     void visualPropertyTypesAndPalette();
@@ -332,6 +341,224 @@ void EditorUiTests::repeatedVisualModePreservesEdits()
     window.showCodeMode();
     window.showVisualMode();
     QCOMPARE(window.m_visualDesigner->document(), edited);
+}
+
+void EditorUiTests::visualUndoHistoryBelongsToDocument()
+{
+    MainWindow window(nullptr, false);
+    window.loadDocument(QStringLiteral("config/first.json"), QByteArray(R"({"name":"Original"})"), QStringLiteral("first"));
+    window.showVisualMode();
+    propertyValue(window.m_visualDesigner, QStringLiteral("name"))->setText(QStringLiteral("Changed"));
+    window.showCodeMode();
+    window.showVisualMode();
+    window.m_visualDesigner->undo();
+    QCOMPARE(window.m_visualDesigner->document().value(QStringLiteral("name")).toString(), QStringLiteral("Original"));
+    window.m_visualDesigner->redo();
+    // Identical contents in another document must not retain the first file's undo history.
+    window.loadDocument(QStringLiteral("config/second.json"), QByteArray(R"({"name":"Changed"})"), QStringLiteral("second"));
+    window.showVisualMode();
+    window.m_visualDesigner->undo();
+    QCOMPARE(window.m_visualDesigner->document().value(QStringLiteral("name")).toString(), QStringLiteral("Changed"));
+    QVERIFY(!window.m_dirty);
+    QVERIFY(!window.m_visualDesigner->findChild<QPushButton *>(QStringLiteral("visualUndo"))->isEnabled());
+}
+
+void EditorUiTests::localProjectRefreshPreservesDocumentAndSelection()
+{
+    QTemporaryDir workspace;
+    QVERIFY(workspace.isValid());
+    for (const auto &name : {QStringLiteral("Alpha"), QStringLiteral("Beta")}) {
+        const auto path = workspace.filePath(name);
+        QVERIFY(QDir().mkpath(path + QStringLiteral("/config")));
+        QVERIFY(DocumentCodec::saveAtomically(path + QStringLiteral("/app.json"), QByteArray("{}"), nullptr));
+    }
+    MainWindow window(nullptr, false);
+    window.populateLocalProjects(workspace.path());
+    QVERIFY(window.m_documents->topLevelItemCount() > 0);
+    window.populateLocalProjects(workspace.path());
+    // Refreshing the same project used to clear the tree and then skip repopulating it.
+    QVERIFY(window.m_documents->topLevelItemCount() > 0);
+    window.m_projects->setCurrentRow(1);
+    QCOMPARE(window.m_currentProject, QStringLiteral("Beta"));
+    window.loadDocument(QStringLiteral("app.json"), QByteArray("{}"), QStringLiteral("beta"));
+    window.m_codeEditor->setPlainText(QStringLiteral("{\"unsaved\":true}"));
+    QVERIFY(DocumentCodec::saveAtomically(workspace.filePath(QStringLiteral("Beta/config/new.json")), QByteArray("{}"), nullptr));
+    // No discard prompt is appropriate when the selected project is only being refreshed.
+    bool prompted = false;
+    QTimer closePrompt;
+    connect(&closePrompt, &QTimer::timeout, [&] {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            prompted = true;
+            box->done(QMessageBox::Cancel);
+        }
+    });
+    closePrompt.start(10);
+    window.populateLocalProjects(workspace.path());
+    QVERIFY(!prompted);
+    QCOMPARE(window.m_projects->currentItem()->text(), QStringLiteral("Beta"));
+    QCOMPARE(window.m_currentProject, QStringLiteral("Beta"));
+    QCOMPARE(window.m_currentDocument, QStringLiteral("app.json"));
+    QCOMPARE(window.m_codeEditor->toPlainText(), QStringLiteral("{\"unsaved\":true}"));
+    QVERIFY(window.m_dirty);
+    QCOMPARE(window.m_documents->topLevelItem(1)->childCount(), 1);
+}
+
+void EditorUiTests::remoteSavesRemainSerialized()
+{
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+    int puts = 0;
+    server.respond = [&puts](const QByteArray &request) {
+        if (!request.startsWith("PUT ")) { return WorkspaceServer::Response{}; }
+        ++puts;
+        const auto body = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+        const auto digest = DocumentCodec::sha256(body.value(QStringLiteral("content")).toString().toUtf8());
+        return WorkspaceServer::Response{QJsonDocument(QJsonObject{{QStringLiteral("sha256"), digest}}).toJson(), QByteArray("200 OK"), 100};
+    };
+    MainWindow window(nullptr, false);
+    QString error;
+    QVERIFY(window.m_api->configure(server.url(), TestSession, true, &error));
+    window.m_remoteMode = true;
+    window.m_policyReadOnly = false;
+    window.m_currentProject = QStringLiteral("Alpha");
+    const QByteArray first(R"({"name":"Alpha"})");
+    window.loadDocument(QStringLiteral("app.json"), first, QStringLiteral("alpha-original"));
+    window.setDirty(true);
+    window.saveDocument();
+    QVERIFY(!window.m_saveAction->isEnabled());
+    window.m_currentProject = QStringLiteral("Beta");
+    window.loadDocument(QStringLiteral("app.json"), QByteArray(R"({"name":"Beta"})"), QStringLiteral("beta-original"));
+    window.setDirty(true);
+    window.updatePolicyPanel();
+    QVERIFY(!window.m_saveAction->isEnabled());
+    window.saveDocument(); // Direct invocation must also respect the in-flight save.
+    window.handleApiJson(QStringLiteral("save:Unrelated:app.json"), {{QStringLiteral("sha256"), QStringLiteral("unrelated")}});
+    QCOMPARE(window.m_pendingSaveProject, QStringLiteral("Alpha"));
+    QVERIFY(waitUntil([&] { return window.m_pendingSaveProject.isEmpty(); }));
+    QCOMPARE(puts, 1);
+    QCOMPARE(window.m_currentSha256, QStringLiteral("beta-original"));
+    QVERIFY(window.m_dirty);
+    QVERIFY(window.m_saveAction->isEnabled());
+    window.saveDocument();
+    window.m_codeEditor->setPlainText(QStringLiteral("{\"name\":\"Beta newer edit\"}"));
+    QVERIFY(waitUntil([&] { return window.m_pendingSaveProject.isEmpty(); }));
+    QCOMPARE(puts, 2);
+    QCOMPARE(window.m_currentSha256, DocumentCodec::sha256(QByteArray(R"({"name":"Beta"})")));
+    QVERIFY(window.m_dirty);
+}
+
+void EditorUiTests::failedRemoteSaveAllowsRetry()
+{
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+    server.respond = [](const QByteArray &) {
+        return WorkspaceServer::Response{QByteArray(R"({"detail":"Rejected"})"), QByteArray("422 Unprocessable Entity"), 0};
+    };
+    MainWindow window(nullptr, false);
+    QString error;
+    QVERIFY(window.m_api->configure(server.url(), TestSession, true, &error));
+    window.m_remoteMode = true;
+    window.m_policyReadOnly = false;
+    window.m_currentProject = QStringLiteral("Alpha");
+    window.loadDocument(QStringLiteral("app.json"), QByteArray("{}"), QStringLiteral("original"));
+    window.setDirty(true);
+    QTimer closePrompt;
+    connect(&closePrompt, &QTimer::timeout, [] {
+        if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) { dialog->reject(); }
+    });
+    closePrompt.start(10);
+    window.saveDocument();
+    QVERIFY(waitUntil([&] { return !server.requests.isEmpty() && window.m_saveAction->isEnabled(); }));
+    QVERIFY(window.m_pendingSaveProject.isEmpty());
+    QVERIFY(window.m_pendingSaveDocument.isEmpty());
+    QVERIFY(window.m_dirty);
+    QCOMPARE(window.m_currentSha256, QStringLiteral("original"));
+}
+
+void EditorUiTests::remoteSaveRevisionCheckBlocksNewWrites_data()
+{
+    QTest::addColumn<int>("status");
+    QTest::newRow("conflict") << 409;
+    QTest::newRow("uncertain-timeout") << 0;
+}
+
+void EditorUiTests::remoteSaveRevisionCheckBlocksNewWrites()
+{
+    QFETCH(int, status);
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+    const QByteArray submitted(R"({"name":"submitted"})");
+    const auto revision = DocumentCodec::sha256(submitted);
+    server.respond = [&](const QByteArray &) {
+        return WorkspaceServer::Response{QJsonDocument(QJsonObject{
+            {QStringLiteral("path"), QStringLiteral("app.json")},
+            {QStringLiteral("content"), QString::fromUtf8(submitted)},
+            {QStringLiteral("sha256"), revision}}).toJson(), QByteArray("200 OK"), 100};
+    };
+    MainWindow window(nullptr, false);
+    QString error;
+    QVERIFY(window.m_api->configure(server.url(), TestSession, true, &error));
+    window.m_remoteMode = true;
+    window.m_policyReadOnly = false;
+    window.m_currentProject = QStringLiteral("Alpha");
+    window.loadDocument(QStringLiteral("app.json"), submitted, QStringLiteral("original"));
+    window.m_pendingSaveProject = window.m_currentProject;
+    window.m_pendingSaveDocument = window.m_currentDocument;
+    window.m_pendingSaveDigest = revision;
+    // Drive the request-failure callback while the revision GET is delayed.
+    window.handleApiError(QStringLiteral("save:Alpha:app.json"), status, QStringLiteral("Save failed"),
+                          status == 409 ? QStringLiteral("conflict") : QStringLiteral("timeout"), {}, status == 0);
+    window.updatePolicyPanel();
+    QVERIFY(!window.m_saveAction->isEnabled());
+    window.saveDocument();
+    window.m_codeEditor->setPlainText(QStringLiteral("{\"name\":\"newer unsaved edit\"}"));
+    bool reviewed = false;
+    QTimer reviewConflict;
+    connect(&reviewConflict, &QTimer::timeout, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (dialog == nullptr) { return; }
+        for (auto *button : dialog->findChildren<QPushButton *>()) {
+            if (button->text() == QStringLiteral("Use local on next save")) {
+                reviewed = true;
+                button->click();
+                return;
+            }
+        }
+        dialog->reject();
+    });
+    reviewConflict.start(10);
+    QVERIFY(waitUntil([&] { return window.m_pendingSaveProject.isEmpty(); }));
+    QCOMPARE(server.requests.size(), 1);
+    QVERIFY(server.requests.first().startsWith("GET "));
+    QCOMPARE(reviewed, status == 409);
+    QCOMPARE(window.m_currentSha256, revision);
+    QVERIFY(window.m_dirty);
+    QVERIFY(window.m_codeEditor->toPlainText().contains(QStringLiteral("newer unsaved edit")));
+    QVERIFY(window.m_saveAction->isEnabled());
+}
+
+void EditorUiTests::canceledRemoteSaveReleasesPendingState()
+{
+    WorkspaceServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+    server.respond = [](const QByteArray &) {
+        return WorkspaceServer::Response{QByteArray("{}"), QByteArray("200 OK"), 1000};
+    };
+    MainWindow window(nullptr, false);
+    QString error;
+    QVERIFY(window.m_api->configure(server.url(), TestSession, true, &error));
+    window.m_remoteMode = true;
+    window.m_policyReadOnly = false;
+    window.m_currentProject = QStringLiteral("Alpha");
+    window.loadDocument(QStringLiteral("app.json"), QByteArray("{}"), QStringLiteral("original"));
+    window.setDirty(true);
+    window.saveDocument();
+    QVERIFY(waitUntil([&] { return !server.requests.isEmpty(); }));
+    window.m_api->cancelActiveRequests();
+    QVERIFY(waitUntil([&] { return window.m_pendingSaveDocument.isEmpty(); }));
+    QVERIFY(window.m_saveAction->isEnabled());
+    QVERIFY(window.m_dirty);
+    QCOMPARE(window.m_currentSha256, QStringLiteral("original"));
 }
 
 void EditorUiTests::repeatedGraphModePreservesEdits()

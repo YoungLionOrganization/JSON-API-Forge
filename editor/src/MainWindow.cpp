@@ -620,6 +620,7 @@ void MainWindow::connectToServer()
         QMessageBox::warning(this, QStringLiteral("Cannot connect"), error);
         return;
     }
+    clearPendingSave();
     settings.setValue(QStringLiteral("connection/lastServer"), normalized.toString());
     settings.setValue(QStringLiteral("connection/lastUsername"), dialog.username());
     m_preferences.serverHistory.removeAll(normalized.toString());
@@ -679,9 +680,7 @@ void MainWindow::disconnectServer()
     m_currentProjectPath.clear();
     m_currentDocument.clear();
     m_currentSha256.clear();
-    m_pendingSaveProject.clear();
-    m_pendingSaveDocument.clear();
-    m_pendingSaveDigest.clear();
+    clearPendingSave();
     m_codeEditor->clear();
     m_connectionLabel->setText(QStringLiteral("●  Not connected"));
     m_connectionLabel->setObjectName(QStringLiteral("connectionOffline"));
@@ -709,14 +708,19 @@ void MainWindow::openLocalWorkspace()
     const QScopedValueRollback<bool> disconnecting(m_disconnecting, true);
     m_remoteMode = false;
     m_api->clearCredentials();
+    clearPendingSave();
     updateConnectionActions();
     m_teamWorkspace->reset();
     m_teamDock->hide();
+    m_currentProject.clear();
+    m_currentProjectPath.clear();
+    showWelcome();
     populateLocalProjects(selected);
 }
 
 void MainWindow::populateLocalProjects(const QString &rootPath)
 {
+    QSignalBlocker blocker(m_projects);
     m_projects->clear();
     m_documents->clear();
     QDir selected(rootPath);
@@ -753,9 +757,21 @@ void MainWindow::populateLocalProjects(const QString &rootPath)
     if (m_graphCreateAction != nullptr) {
         m_graphCreateAction->setEnabled(true);
     }
-    if (m_projects->count() > 0) {
-        m_projects->setCurrentRow(0);
+    int previousRow = -1;
+    for (int row = 0; row < m_projects->count(); ++row) {
+        if (m_projects->item(row)->data(ProjectPathRole).toString() == m_currentProjectPath) {
+            previousRow = row;
+            break;
+        }
+    }
+    m_projects->setCurrentRow(previousRow >= 0 ? previousRow : 0);
+    blocker.unblock();
+    if (previousRow >= 0) {
+        populateLocalDocuments(m_currentProjectPath);
+    } else if (m_projects->count() > 0) {
+        selectProject();
     } else {
+        m_validateAction->setEnabled(false);
         showStatusMessage(QStringLiteral("No app.json projects found. Use File → Create project."), 6000);
     }
 }
@@ -860,6 +876,8 @@ void MainWindow::openSelectedDocument()
 
 void MainWindow::loadDocument(const QString &path, const QByteArray &content, const QString &sha256)
 {
+    // History survives mode switches, but never crosses a document/reload boundary.
+    m_visualDesigner->resetHistory();
     m_workspace->setCurrentWidget(m_codeEditor);
     m_pendingOpenOperation.clear();
     m_currentDocument = path;
@@ -876,7 +894,7 @@ void MainWindow::loadDocument(const QString &path, const QByteArray &content, co
     m_codeButton->setEnabled(true);
     m_visualButton->setEnabled(jsonDocument && !graphDocument);
     m_graphButton->setEnabled(graphDocument);
-    m_saveAction->setEnabled(!m_remoteMode || !m_policyReadOnly);
+    updateSaveAction();
     setDirty(false);
     if (graphDocument) {
         QString graphError;
@@ -930,6 +948,10 @@ QByteArray MainWindow::currentEditorBytes() const
 
 void MainWindow::saveDocument()
 {
+    if (m_remoteMode && !m_pendingSaveDocument.isEmpty()) {
+        showStatusMessage(QStringLiteral("Wait for the current save and revision check to finish."), 5000);
+        return;
+    }
     QByteArray bytes;
     if (!prepareCurrentJson(nullptr, &bytes)) {
         return;
@@ -956,7 +978,7 @@ void MainWindow::saveDocument()
         m_pendingSaveProject = m_currentProject;
         m_pendingSaveDocument = m_currentDocument;
         m_pendingSaveDigest = DocumentCodec::sha256(bytes);
-        m_saveAction->setEnabled(false);
+        updateSaveAction();
         m_api->saveDocument(m_currentProject, m_currentDocument, bytes, m_currentSha256);
         return;
     }
@@ -1486,13 +1508,13 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         return;
     }
     if (operation == QStringLiteral("reconcile-save")) {
+        if (m_pendingSaveDocument.isEmpty()) { return; }
         m_connectionLabel->setText(QStringLiteral("●  Connected"));
         m_connectionLabel->setObjectName(QStringLiteral("connectionOnline"));
         const auto path = payload.value(QStringLiteral("path")).toString();
         const auto serverBytes = payload.value(QStringLiteral("content")).toString().toUtf8();
         const auto serverDigest = DocumentCodec::sha256(serverBytes);
         if (path != m_pendingSaveDocument || serverDigest != m_pendingSaveDigest) {
-            m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
             showSaveConflict(payload);
             return;
         }
@@ -1506,13 +1528,11 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
                 showStatusMessage(QStringLiteral("The timed-out save succeeded; newer local edits remain unsaved."), 8000);
             }
         }
-        m_pendingSaveProject.clear();
-        m_pendingSaveDocument.clear();
-        m_pendingSaveDigest.clear();
-        m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
+        clearPendingSave();
         return;
     }
     if (operation == QStringLiteral("conflict-document")) {
+        if (m_pendingSaveDocument.isEmpty()) { return; }
         showSaveConflict(payload);
         return;
     }
@@ -1525,6 +1545,8 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         return;
     }
     if (operation.startsWith(QStringLiteral("save:"))) {
+        if (m_pendingSaveDocument.isEmpty()
+            || operation != QStringLiteral("save:%1:%2").arg(m_pendingSaveProject, m_pendingSaveDocument)) { return; }
         if (m_currentProject == m_pendingSaveProject && m_currentDocument == m_pendingSaveDocument) {
             m_currentSha256 = payload.value(QStringLiteral("sha256")).toString();
             if (DocumentCodec::sha256(currentEditorBytes()) == m_pendingSaveDigest) {
@@ -1536,10 +1558,7 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
             }
         }
         const auto savedProject = m_pendingSaveProject;
-        m_pendingSaveProject.clear();
-        m_pendingSaveDocument.clear();
-        m_pendingSaveDigest.clear();
-        m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
+        clearPendingSave();
         if (!savedProject.isEmpty()) {
             m_api->fetchDocuments(savedProject);
         }
@@ -1563,8 +1582,15 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
                                 const QString &category, const QString &technicalDetails,
                                 bool outcomeUncertain)
 {
-    if (category == QStringLiteral("canceled") || operation == QStringLiteral("auth-logout")
-        || m_disconnecting) {
+    if (operation == QStringLiteral("auth-logout") || m_disconnecting) {
+        return;
+    }
+    if (operation.startsWith(QStringLiteral("save:"))
+        && (m_pendingSaveDocument.isEmpty()
+            || operation != QStringLiteral("save:%1:%2").arg(m_pendingSaveProject, m_pendingSaveDocument))) { return; }
+    if (category == QStringLiteral("canceled")) {
+        if (operation.startsWith(QStringLiteral("save:")) || operation == QStringLiteral("reconcile-save")
+            || operation == QStringLiteral("conflict-document")) { clearPendingSave(); }
         return;
     }
     if (operation.startsWith(QStringLiteral("team-")) && statusCode != 401) {
@@ -1596,6 +1622,7 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
         if (m_sessionExpired) { return; }
         m_sessionExpired = true;
         m_api->cancelActiveRequests();
+        clearPendingSave();
         m_connectionLabel->setText(QStringLiteral("●  Session expired"));
         m_connectionLabel->setObjectName(QStringLiteral("connectionOffline"));
         m_teamWorkspace->reset();
@@ -1605,7 +1632,6 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
         updateConnectionActions();
     }
     if (operation.startsWith(QStringLiteral("save:"))) {
-        m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
         if (statusCode == 409 && !m_pendingSaveProject.isEmpty()) {
             m_api->fetchDocument(m_pendingSaveProject, m_pendingSaveDocument,
                                  QStringLiteral("conflict-document"));
@@ -1617,6 +1643,9 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
                                  QStringLiteral("reconcile-save"));
             return;
         }
+        clearPendingSave();
+    } else if (operation == QStringLiteral("reconcile-save") || operation == QStringLiteral("conflict-document")) {
+        clearPendingSave();
     }
     const bool reconnect = statusCode == 401 || operation.startsWith(QStringLiteral("auth-"));
     showApiErrorDialog(operation, statusCode, message, category, technicalDetails, reconnect);
@@ -1685,6 +1714,7 @@ void MainWindow::showSaveConflict(const QJsonObject &serverDocument)
     const auto serverSha = serverDocument.value(QStringLiteral("sha256")).toString();
     if (path.isEmpty() || path != m_pendingSaveDocument
         || m_currentProject != m_pendingSaveProject || m_currentDocument != path) {
+        clearPendingSave();
         showApiErrorDialog(QStringLiteral("conflict-document"), 409,
                            QStringLiteral("The server conflict response no longer matches the open document."),
                            QStringLiteral("conflict"),
@@ -1748,10 +1778,7 @@ void MainWindow::showSaveConflict(const QJsonObject &serverDocument)
     } else if (result == 3) {
         showStatusMessage(QStringLiteral("Reloaded the current server revision."), 5000);
     }
-    m_pendingSaveProject.clear();
-    m_pendingSaveDocument.clear();
-    m_pendingSaveDigest.clear();
-    m_saveAction->setEnabled(m_api->isConfigured() && !m_policyReadOnly && !m_currentDocument.isEmpty());
+    clearPendingSave();
 }
 
 void MainWindow::updatePolicyPanel()
@@ -1768,10 +1795,24 @@ void MainWindow::updatePolicyPanel()
                                     m_policyHooks ? QStringLiteral("allowed") : QStringLiteral("blocked"),
                                     m_policyGraphs ? QStringLiteral("allowed") : QStringLiteral("blocked"))
                                .arg(m_policyMaxBytes / 1024));
-    m_saveAction->setEnabled(!m_currentDocument.isEmpty() && !m_policyReadOnly);
+    updateSaveAction();
     if (m_graphCreateAction != nullptr) {
         m_graphCreateAction->setEnabled(m_policyGraphs && !m_policyReadOnly);
     }
+}
+
+void MainWindow::updateSaveAction()
+{
+    m_saveAction->setEnabled(!m_currentDocument.isEmpty()
+        && (!m_remoteMode || (m_api->isConfigured() && !m_policyReadOnly && m_pendingSaveDocument.isEmpty())));
+}
+
+void MainWindow::clearPendingSave()
+{
+    m_pendingSaveProject.clear();
+    m_pendingSaveDocument.clear();
+    m_pendingSaveDigest.clear();
+    updateSaveAction();
 }
 
 void MainWindow::setDirty(bool dirty)

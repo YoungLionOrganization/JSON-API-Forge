@@ -2,6 +2,9 @@
 
 ## Unreleased maintenance
 
+- Reset Visual undo/redo history when opening or reloading a document, including identical JSON in different files, while preserving history across mode switches.
+- Preserve the selected local project and unsaved document during workspace refreshes, and repopulate the document tree even when the project path is unchanged.
+- Serialize remote saves through revision reconciliation and conflict review so navigation, capability refreshes and direct save invocation cannot overwrite the pending revision. Ignore unrelated save acknowledgements and release pending state after rejected/canceled requests or session changes.
 - Show Python interpreter startup errors immediately and allow subsequent SDK checks instead of remaining stuck in the running state.
 - Generate the explicit loopback HTTP opt-in for local Python SDK integrations and health checks while retaining HTTPS requirements for remote endpoints.
 - Correct the install command to use the independent `json-api-forge-client` package, including YoungLion/DDM extras.

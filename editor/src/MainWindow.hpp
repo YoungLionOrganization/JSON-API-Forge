@@ -80,6 +80,8 @@ private:
     void populateLocalDocuments(const QString &projectPath);
     void loadDocument(const QString &path, const QByteArray &content, const QString &sha256);
     void setDirty(bool dirty);
+    void updateSaveAction();
+    void clearPendingSave();
     bool confirmDiscard();
     bool prepareCurrentJson(QJsonObject *object, QByteArray *bytes);
     [[nodiscard]] QByteArray currentEditorBytes() const;

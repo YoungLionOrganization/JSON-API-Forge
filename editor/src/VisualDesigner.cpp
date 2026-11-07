@@ -423,10 +423,16 @@ void VisualDesigner::setDocument(const QJsonObject &document)
     if (m_document == document && !m_history.isEmpty()) { return; }
     m_document = document;
     m_selection.clear();
-    m_history = {document};
-    m_selections = {QStringList{}};
-    m_historyIndex = 0;
+    resetHistory();
     refreshCanvas();
+}
+
+void VisualDesigner::resetHistory()
+{
+    m_history = {m_document};
+    m_selections = {m_selection};
+    m_historyIndex = 0;
+    updateControls();
 }
 
 QJsonObject VisualDesigner::document() const { return m_document; }

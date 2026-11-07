@@ -59,6 +59,8 @@ Use the Editor's one-time founder setup page once, then set `EDITOR_SETUP_ENABLE
 
 Open **Edit → Settings…** to tune bounded request/authentication/upload/download timeouts, safe GET retry/backoff, maximum JSON size, server history, discard/layout confirmations, right-drag panning and zoom sensitivity. Mutation requests are never retried automatically. Canceling an active request is explicit, and reconnect/session-expiry paths preserve unsaved documents whenever the server identity is unchanged.
 
+Remote saves finish their revision check or conflict review before another save can start, including after changing documents. Edits made while a save is pending remain unsaved until explicitly saved. Visual undo/redo history stays with the current document: switching modes preserves it, while opening or reloading a document resets it. Refreshing a local workspace preserves its selected project and unsaved document.
+
 Open **Integrations → Team Workspace** for the server-backed operational console:
 
 - edit the signed-in member profile;

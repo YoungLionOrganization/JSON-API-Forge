@@ -21,6 +21,7 @@ class VisualDesigner final : public QWidget {
 public:
     explicit VisualDesigner(QWidget *parent = nullptr);
     void setDocument(const QJsonObject &document);
+    void resetHistory();
     [[nodiscard]] QJsonObject document() const;
     void addPaletteComponent(const QString &label, const QString &collection, const QJsonObject &value);
 
