@@ -12,6 +12,12 @@ SHA copying is no longer needed. The reviewed [publication plan](release/compone
 
 The workflow requires the authorized owner account defined in `release/authorized_publishers.json`. Its controller commit must also have successful Main CI and CodeQL. Use a new **Run workflow** after updating the publisher, so the new workflow definition and tests are used.
 
+## Updating the unpublished Editor package
+
+When including additional reviewed Editor fixes before v0.5.2 publication, first push the exact source to `Editor` and wait for the complete native build, sanitizer and CodeQL workflows. Run **Prepare updated unpublished Editor release** on `main` with that source SHA. It requires an authorized owner and successful controller CI/CodeQL, verifies all twelve binaries and their build proof, and replaces only the existing draft's assets. Public releases are refused. The still-unpublished Editor tag is moved only after all replacement assets match their verified hashes.
+
+The workflow emits `prepared-editor-component.json`. Replace only the Editor entry in `release/components-v0.5.2.json` with that verified record, regenerate the source manifest, push the reviewed plan to `main`, and wait for controller CI/CodeQL. Then validate and publish all four components with the normal workflow. The other three component sources and packages remain unchanged.
+
 ## Recovery
 
 All selected components pass preflight before any tag creation or public transition. GitHub does not offer an atomic transaction covering four releases, so a network failure can occur after some releases become public. Run the same workflow again: it verifies those public releases without changing them and completes the remaining drafts.

@@ -2,6 +2,7 @@
 
 ## v0.5.2 (in development)
 
+- Add owner-only restaging of the unpublished Editor draft from an exact successful native build, with credential-free package validation, verified asset replacement and a generated component-plan record. Public releases and unexpected tag changes remain refused.
 - Normalize clipboard whitespace in release SHA input and add one-run publication of all four prepared component drafts, with full preflight, pinned source/asset manifests, controller CI gates and safe recovery after partial publication.
 
 Editor capabilities and profile requests now accept an optional project scope. Authenticated project-only members can discover projects before selecting one, then load their effective project permissions without inheriting server-wide account administration privileges. Regression coverage checks allowed and denied scopes.
