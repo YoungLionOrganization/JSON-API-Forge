@@ -458,6 +458,7 @@ void EditorCoreTests::errorClassificationPolicy()
     ApiClient client;
     EditorPreferences preferences;
     preferences.requestTimeoutMs = 3000;
+    preferences.authenticationTimeoutMs = 3000;
     preferences.safeGetRetries = 0;
     preferences.maxResponseMiB = 1;
     client.applyPreferences(preferences);
@@ -489,10 +490,11 @@ void EditorCoreTests::errorClassificationPolicy()
     QCOMPARE(detailed.at(8).at(3).toString(), QStringLiteral("canceled"));
     QVERIFY(detailed.at(8).at(2).toString().contains(QStringLiteral("user"), Qt::CaseInsensitive));
 
-    QTcpServer portReservation;
-    QVERIFY(portReservation.listen(QHostAddress::LocalHost));
-    const auto closedPort = portReservation.serverPort();
-    portReservation.close();
+    // Keep the TCP port bound without listening. Closing a listening server
+    // lets another socket reuse the port before the refusal is observed.
+    QTcpSocket portReservation;
+    QVERIFY(portReservation.bind(QHostAddress::LocalHost, 0));
+    const auto closedPort = portReservation.localPort();
     QVERIFY2(client.configureServer(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(closedPort)), true,
                                     &error), qPrintable(error));
     client.fetchSetupStatus(QStringLiteral("closed-port"));
