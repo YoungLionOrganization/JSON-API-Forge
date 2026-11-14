@@ -100,6 +100,8 @@ signals:
     void fileTransferProgress(const QString &operation, int percent, const QString &stage);
 
 private:
+    friend class EditorCoreTests;
+
     enum class RequestProfile { Normal, Authentication, Background };
     void invalidatePendingResponses();
     void postAttachment(const QString &areaId, const QString &name, const QByteArray &snapshot);

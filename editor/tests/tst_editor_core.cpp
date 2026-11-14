@@ -25,6 +25,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMouseEvent>
+#include <QNetworkReply>
 #include <QLabel>
 #include <QProcess>
 #include <QPushButton>
@@ -94,6 +95,23 @@ bool waitUntil(const std::function<bool()> &condition, int timeoutMs = 5000)
     }
     return condition();
 }
+
+class RefusedReply final : public QNetworkReply {
+public:
+    explicit RefusedReply(QObject *parent) : QNetworkReply(parent) {}
+
+    void finish()
+    {
+        setError(ConnectionRefusedError, QStringLiteral("Connection refused"));
+        setFinished(true);
+        emit finished();
+    }
+
+    void abort() override {}
+
+protected:
+    qint64 readData(char *, qint64) override { return -1; }
+};
 
 class LocalJsonServer final : public QTcpServer {
 public:
@@ -490,15 +508,12 @@ void EditorCoreTests::errorClassificationPolicy()
     QCOMPARE(detailed.at(8).at(3).toString(), QStringLiteral("canceled"));
     QVERIFY(detailed.at(8).at(2).toString().contains(QStringLiteral("user"), Qt::CaseInsensitive));
 
-    // Keep the TCP port bound without listening. Closing a listening server
-    // lets another socket reuse the port before the refusal is observed.
-    QTcpSocket portReservation;
-    QVERIFY(portReservation.bind(QHostAddress::LocalHost, 0));
-    const auto closedPort = portReservation.localPort();
-    QVERIFY2(client.configureServer(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(closedPort)), true,
-                                    &error), qPrintable(error));
-    client.fetchSetupStatus(QStringLiteral("closed-port"));
-    QVERIFY(waitUntil([&detailed] { return detailed.size() == 10; }));
+    // Inject Qt's socket error so runner loopback filtering cannot turn it into a timeout.
+    auto *refused = new RefusedReply(&client);
+    client.trackJsonReply(refused, QStringLiteral("connection-refusal-test"), false, false, 0);
+    refused->finish();
+    QCOMPARE(detailed.size(), 10);
+    QCOMPARE(detailed.at(9).at(0).toString(), QStringLiteral("connection-refusal-test"));
     QCOMPARE(detailed.at(9).at(3).toString(), QStringLiteral("connection-refused"));
 }
 
