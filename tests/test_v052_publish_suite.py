@@ -124,7 +124,7 @@ def environment(suite, monkeypatch, plan, *, public=(), corrupt=None, failure=No
         release_id = int(path.rsplit("/", 1)[-1])
         release = releases[release_id]
         if method == "PATCH":
-            assert data == {"draft": False}
+            assert data == {"draft": False, "tag_name": release["tag_name"], "target_commitish": release["target_commitish"]}
             if release["tag_name"] == failure:
                 if uncertain:
                     release["draft"] = False

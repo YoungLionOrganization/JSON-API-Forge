@@ -255,7 +255,11 @@ def run_suite(plan: dict, components: list[dict], mode: str, *, report_path: Pat
             verify_gates(repo, component)
             release = checked_release(repo, component)
             if release["draft"]:
-                release = api(f"repos/{repo}/releases/{component['release_id']}", method="PATCH", data={"draft": False})
+                release = api(
+                    f"repos/{repo}/releases/{component['release_id']}",
+                    method="PATCH",
+                    data={"draft": False, "tag_name": component["tag"], "target_commitish": component["sha"]},
+                )
                 if release["draft"]:
                     raise ValueError("GitHub did not complete the public transition")
                 verify_remote(release, component["assets"])
