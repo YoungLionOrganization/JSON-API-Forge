@@ -61,7 +61,7 @@ The reviewed [component plan](release/components-v0.5.2.json) pins each branch's
 
 One component can also be selected. The optional source field is a consistency check for the prepared candidate; in `all` mode it applies only to Main. Surrounding clipboard whitespace and uppercase hex are normalized. A mismatching source is refused rather than silently publishing a different build.
 
-The legacy server-only command remains available for preparing an initial server draft: `python scripts/publish_release.py --sha SHA --mode draft`. All four v0.5.2 drafts are already prepared and verified. The combined workflow publishes them under their independent tags.
+The legacy server-only command remains available for preparing an initial server draft: `python scripts/publish_release.py --sha SHA --mode draft`. To replace an existing unpublished server or Editor draft with a newer verified build, follow the draft update procedure in [PUBLISH.md](PUBLISH.md). The combined workflow publishes the four reviewed drafts under their independent tags.
 
 ## Retry and recovery
 

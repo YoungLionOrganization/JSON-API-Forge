@@ -1,6 +1,6 @@
 # Publish v0.5.2 in one workflow run
 
-The four v0.5.2 release drafts already contain their verified packages. The combined workflow publishes all four under their separate tags: `v0.5.2`, `editor-v0.5.2`, `python-library-v0.5.2` and `exampleApps-v0.5.2`.
+The four v0.5.2 release drafts are tied to the source commits and package digests recorded in the publication plan. Update the affected drafts before publishing a newer build. The combined workflow publishes all four under their separate tags: `v0.5.2`, `editor-v0.5.2`, `python-library-v0.5.2` and `exampleApps-v0.5.2`.
 
 1. Open [Actions → Validate or publish all components](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/publish-release.yml).
 2. Click **Run workflow** and choose branch **main**.
@@ -12,11 +12,12 @@ SHA copying is no longer needed. The reviewed [publication plan](release/compone
 
 The workflow requires the authorized owner account defined in `release/authorized_publishers.json`. Its controller commit must also have successful Main CI and CodeQL. Use a new **Run workflow** after updating the publisher, so the new workflow definition and tests are used.
 
-## Updating the unpublished Editor package
+## Updating an unpublished server or Editor draft
 
-When including additional reviewed Editor fixes before v0.5.2 publication, first push the exact source to `Editor` and wait for the complete native build, sanitizer and CodeQL workflows. Run **Prepare updated unpublished Editor release** on `main` with that source SHA. It requires an authorized owner and successful controller CI/CodeQL, verifies all twelve binaries and their build proof, and replaces only the existing draft's assets. Public releases are refused. The still-unpublished Editor tag is moved only after all replacement assets match their verified hashes.
-
-The workflow emits `prepared-editor-component.json`. Replace only the Editor entry in `release/components-v0.5.2.json` with that verified record, regenerate the source manifest, push the reviewed plan to `main`, and wait for controller CI/CodeQL. Then validate and publish all four components with the normal workflow. The other three component sources and packages remain unchanged.
+1. Land the reviewed changes on the component's branch. Wait for CI, CodeQL and the all-platform builds for that exact push on `main`, or the native builds, sanitizer and CodeQL for that exact push on `Editor`.
+2. On `main`, run [Prepare updated unpublished component release](https://github.com/YoungLionOrganization/JSON-API-Forge/actions/workflows/prepare-editor-release.yml) for each updated component. Supply its exact source SHA. The owner-only workflow checks controller CI and CodeQL, verifies the full build and replaces assets in the existing unpublished draft. It moves the draft tag only after GitHub reports every expected SHA-256 digest.
+3. Download `prepared-component.json` from each successful run's `prepared-component` artifact. Replace the matching entries in [the publication plan](release/components-v0.5.2.json), regenerate `MANIFEST.sha256` and push the plan to `main`. Use the SHA from the component's build record for its plan entry.
+4. After CI and CodeQL pass on the new controller commit, run the combined workflow in `validate` mode and then in `publish` mode.
 
 ## Recovery
 

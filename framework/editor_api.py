@@ -15,11 +15,10 @@ import uuid
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
+import portalocker
 from dotenv import dotenv_values
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, HTMLResponse
-from filelock import FileLock
-from filelock import Timeout as FileLockTimeout
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import _load_project_dir
@@ -428,15 +427,20 @@ class EditorControlPlane:
                     continue
                 shutil.copyfile(source, target_dir / source.name, follow_symlinks=False)
 
-    async def _acquire_project_lock(self, project: Path) -> FileLock:
+    async def _acquire_project_lock(self, project: Path) -> portalocker.Lock:
         self._lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         name = hashlib.sha256(str(project).encode("utf-8")).hexdigest() + ".lock"
-        lock = FileLock(self._lock_dir / name, timeout=10)
-        try:
-            await asyncio.to_thread(lock.acquire)
-        except FileLockTimeout as exc:
-            raise HTTPException(status_code=503, detail="Project is busy; retry the save", headers={"Retry-After": "1"}) from exc
-        return lock
+        lock = portalocker.Lock(self._lock_dir / name, timeout=0)
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                lock.acquire()
+                return lock
+            except portalocker.exceptions.AlreadyLocked as exc:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise HTTPException(status_code=503, detail="Project is busy; retry the save", headers={"Retry-After": "1"}) from exc
+                await asyncio.sleep(min(0.05, remaining))
 
     def list_projects(self) -> list[dict]:
         if not self.apps_dir.exists():
@@ -583,7 +587,7 @@ class EditorControlPlane:
                 finally:
                     temporary.unlink(missing_ok=True)
             finally:
-                await asyncio.to_thread(lock.release)
+                lock.release()
         digest = _digest(data)
         log.info("editor write project=%s document=%s client_policy=authorized sha256=%s", project.name, normalized, digest[:12])
         return digest

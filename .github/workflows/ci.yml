@@ -70,7 +70,7 @@ jobs:
       - name: Audit Python dependencies and security-sensitive source
         if: matrix.python-version == '3.13'
         run: |
-          python -m pip install "bandit>=1.9,<2" "pip-audit>=2.10,<3"
+          python -m pip install "bandit>=1.9,<2" "pip-audit>=2.10,<3" "filelock>=4.2.1,<5"
           bandit -q -ll -r framework forge.py main.py run.py passenger_wsgi.py
           pip-audit --local --skip-editable
       - name: Verify release manifest
@@ -189,7 +189,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       mongo:
-        image: mongo:8
+        image: mongo:8.0.38@sha256:d97fea17ccb8d004cd137be8dab54d70d0df11be69c9f422aefe4484c8414ab7
         ports:
           - 27017:27017
         options: >-

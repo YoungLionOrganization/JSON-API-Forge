@@ -20,8 +20,9 @@ def staging(monkeypatch):
     return result
 
 
-def setup_staging(staging, monkeypatch, *, public=False, bad_proof=False):
-    original = json.loads((SCRIPTS.parent / "release/components-v0.5.2.json").read_text())["components"][1]
+def setup_staging(staging, monkeypatch, *, public=False, bad_proof=False, name="Editor"):
+    plan = json.loads((SCRIPTS.parent / "release/components-v0.5.2.json").read_text())
+    original = next(item for item in plan["components"] if item["name"] == name)
     sha = "a" * 40
     mutations = []
     release = {"draft": not public, "tag_name": original["tag"], "target_commitish": original["sha"], "assets": []}
@@ -73,6 +74,20 @@ def setup_staging(staging, monkeypatch, *, public=False, bad_proof=False):
             assert "-I" in command
 
     monkeypatch.setattr(staging, "api", api)
+    if name == "server":
+
+        def validate_server(repo, sha, build, destination):
+            destination.mkdir(exist_ok=True)
+            assets = {}
+            for asset in original["assets"]:
+                if asset != "release-build.json":
+                    (destination / asset).write_bytes(b"fixture server artifact")
+                    assets[asset] = hashlib.sha256((destination / asset).read_bytes()).hexdigest()
+            proof = {**build, "sha": "b" * 40 if bad_proof else sha, "version": "0.5.2", "assets": assets}
+            (destination / "release-build.json").write_text(json.dumps(proof))
+            return destination
+
+        monkeypatch.setattr(staging, "server_packages", validate_server)
     monkeypatch.setattr(staging.subprocess, "run", run)
     return sha, release, ref, mutations
 
@@ -111,3 +126,22 @@ def test_wrong_checkout_cannot_execute_validation_or_change_draft(staging, monke
     with pytest.raises(ValueError, match="Validation source"):
         staging.prepare(sha, tmp_path, tmp_path / "component.json")
     assert not mutations
+
+
+@pytest.mark.parametrize("public,bad_proof", [(False, False), (False, True), (True, False)])
+def test_restaging_server_uses_only_the_verified_build(staging, monkeypatch, tmp_path, public, bad_proof):
+    sha, release, ref, mutations = setup_staging(staging, monkeypatch, public=public, bad_proof=bad_proof, name="server")
+    report = tmp_path / "server.json"
+    (tmp_path / "release/notes").mkdir(parents=True)
+    (tmp_path / "release/notes/v0.5.2.md").write_text("Updated server notes")
+    if public or bad_proof:
+        with pytest.raises(ValueError):
+            staging.prepare(sha, tmp_path, report, name="server")
+        assert not mutations
+        return
+
+    component = staging.prepare(sha, tmp_path, report, name="server")
+    assert [operation[1] for operation in mutations if operation[0] == "upload"] == sorted(component["assets"])
+    assert ref["object"]["sha"] == release["target_commitish"] == component["sha"] == sha
+    assert release["draft"] is True
+    assert json.loads(report.read_text()) == component

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException, UploadFile
 from jsonschema import Draft202012Validator
+from portalocker import Lock
 from starlette.datastructures import Headers
 from starlette.requests import Request
 
@@ -109,6 +110,12 @@ def test_datasources_file_read_query_and_mutations(tmp_path):
             allowed_filters=["kind"],
             allowed_sort=["name"],
         )
+        bounded = source.model_copy(update={"file_lock_timeout_seconds": 0.05})
+        with Lock(tmp_path / "items.json.forge.lock"):
+            with pytest.raises(HTTPException, match="Data source file is busy") as busy:
+                await manager.create(bounded, {"name": "blocked"})
+        assert busy.value.status_code == 503
+        assert busy.value.headers == {"Retry-After": "1"}
         result = await manager.read(source, _request(b"kind=x&sort=name&limit=1"))
         assert result["total"] == 2 and result["items"][0]["name"] == "a"
         created = await manager.create(source, {"name": "d", "kind": "z"})

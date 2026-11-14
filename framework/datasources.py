@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import portalocker
 import yaml
 from fastapi import HTTPException, Request
 
@@ -211,10 +212,8 @@ class DataSourceManager:
         return {"items": rows[offset : offset + limit], "limit": limit, "offset": offset, "total": len(rows)}
 
     def _mutate_file_sync(self, source: DataSourceConfig, action: str, *, payload: Any = None, item_id: str | None = None) -> Any:
-        from filelock import FileLock, Timeout
-
         path = self._file_path(source)
-        lock = FileLock(str(path) + ".forge.lock", timeout=source.file_lock_timeout_seconds)
+        lock = portalocker.Lock(str(path) + ".forge.lock", timeout=source.file_lock_timeout_seconds, check_interval=0.05)
         try:
             with lock:
                 data = self._read_file_sync(source)
@@ -253,7 +252,7 @@ class DataSourceManager:
                     self._write_file_sync(source, new_data)
                     return {"deleted": True}
                 raise RuntimeError(f"Unknown file mutation action: {action}")
-        except Timeout as exc:
+        except portalocker.exceptions.AlreadyLocked as exc:
             raise HTTPException(status_code=503, detail="Data source file is busy", headers={"Retry-After": "1"}) from exc
 
     async def create(self, source: DataSourceConfig, payload: Any) -> Any:

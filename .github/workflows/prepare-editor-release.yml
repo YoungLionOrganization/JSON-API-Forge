@@ -1,10 +1,16 @@
-name: Prepare updated unpublished Editor release
+name: Prepare updated unpublished component release
 
 on:
   workflow_dispatch:
     inputs:
+      component:
+        description: Draft to update from a successful branch push
+        required: true
+        type: choice
+        default: Editor
+        options: [Editor, server]
       source_sha:
-        description: Exact Editor commit with successful native build and CodeQL
+        description: Exact component commit with successful required workflows
         required: true
         type: string
 
@@ -19,7 +25,7 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: write
       actions: read
@@ -31,37 +37,21 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
-      - name: Verify owner, controller and exact Editor workflow gates
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
-          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-        run: |
-          python - <<'PY'
-          import os, sys
-          sys.path.insert(0, 'scripts')
-          from publish_suite import authorize, normalize_sha, verify_controller, workflow_gate
-          repo = 'YoungLionOrganization/JSON-API-Forge'
-          authorize(repo)
-          verify_controller(repo)
-          sha = normalize_sha(os.environ['SOURCE_SHA'])
-          for workflow in ('editor-build.yml', 'editor-codeql.yml'):
-              workflow_gate(repo, workflow, sha, 'Editor')
-          PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.source_sha }}
-          path: editor-source
+          path: component-source
           persist-credentials: false
-      - name: Validate packages and replace only the unpublished Editor draft
+      - name: Validate packages and replace the unpublished draft
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          COMPONENT: ${{ inputs.component }}
           GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-        run: python scripts/prepare_editor_release.py --sha "$SOURCE_SHA" --source editor-source
+        run: python scripts/prepare_editor_release.py --component "$COMPONENT" --sha "$SOURCE_SHA" --source component-source
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: prepared-editor-component
-          path: prepared-editor-component.json
+          name: prepared-component
+          path: prepared-component.json
           if-no-files-found: warn

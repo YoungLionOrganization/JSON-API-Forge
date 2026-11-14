@@ -2,6 +2,8 @@
 
 ## v0.5.2 (in development)
 
+- Use Portalocker for writable data sources and Editor project saves while retaining Python 3.10 support. Pin the live CI service to MongoDB 8.0.38 for Ubuntu runner kernel compatibility.
+
 - Add owner-only restaging of the unpublished Editor draft from an exact successful native build, with credential-free package validation, verified asset replacement and a generated component-plan record. Public releases and unexpected tag changes remain refused.
 - Normalize clipboard whitespace in release SHA input and add one-run publication of all four prepared component drafts, with full preflight, pinned source/asset manifests, controller CI gates and safe recovery after partial publication.
 
