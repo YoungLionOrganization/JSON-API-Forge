@@ -125,7 +125,7 @@ jobs:
           "${{ runner.temp }}/forge-wheel/bin/forge" schema
           test -f schemas/manifest.schema.json
           "${{ runner.temp }}/forge-wheel/bin/python" -c "from framework import config; print(config.ForgeConfig.model_fields['version'].default)"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: json-api-forge-v0.5.2-python
           path: dist/*
@@ -152,7 +152,7 @@ jobs:
           FORGE_BROWSER_TESTS: "1"
           FORGE_BROWSER_SCREENSHOT_DIR: browser-screenshots
         run: pytest tests/test_editor_call_browser.py -q --junitxml=editor-call-browser.xml
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: editor-call-browser-contract

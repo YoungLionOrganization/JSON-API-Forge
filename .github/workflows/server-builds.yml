@@ -109,7 +109,7 @@ jobs:
             "$hash  $archive`n",
             [Text.UTF8Encoding]::new($false)
           )
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: JSON-API-Forge-v0.5.2-${{ matrix.target }}
           path: artifacts/*
@@ -152,7 +152,7 @@ jobs:
             tar -C stage -czf artifacts/JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}.tar.gz .
           '
           (cd artifacts && sha256sum "JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}.tar.gz" > "JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}.tar.gz.sha256")
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: JSON-API-Forge-v0.5.2-linux-musl-${{ matrix.arch }}
           path: artifacts/*
@@ -186,7 +186,7 @@ jobs:
           cp dist/* artifacts/
           (cd artifacts && for archive in *.whl *.tar.gz; do sha256sum "$archive" > "$archive.sha256"; done)
           (cd artifacts && sha256sum *.whl *.tar.gz > PYTHON-SHA256SUMS)
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: JSON-API-Forge-v0.5.2-portable-hosting
           path: |
@@ -217,7 +217,7 @@ jobs:
           mkdir artifacts
           docker buildx build --platform "${{ matrix.platform }}" --output "type=oci,dest=artifacts/JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}.tar" .
           (cd artifacts && sha256sum "JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}.tar" > "JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}.tar.sha256")
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: JSON-API-Forge-v0.5.2-oci-${{ matrix.arch }}
           path: artifacts/*
@@ -259,7 +259,7 @@ jobs:
           python scripts/validate_release_assets.py downloads verified --sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
           (cd downloads && zip -r ../JSON-API-Forge-v0.5.2-all-platforms.zip .)
           sha256sum JSON-API-Forge-v0.5.2-all-platforms.zip > JSON-API-Forge-v0.5.2-all-platforms.zip.sha256
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: JSON-API-Forge-v0.5.2-all-platforms
           path: |
