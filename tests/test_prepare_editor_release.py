@@ -40,6 +40,8 @@ def setup_staging(staging, monkeypatch, *, public=False, bad_proof=False, name="
                 ref["object"]["sha"] = data["sha"]
             else:
                 release.update(data)
+                if "tag_name" not in data:
+                    release["tag_name"] = "untagged-fixture"
         return copy.deepcopy(ref if "/git/" in path else release)
 
     def run(command, **kwargs):

@@ -165,7 +165,11 @@ def prepare(sha: str, source: Path, report: Path, *, name: str = "Editor") -> di
                 "Also includes the latest session/message/file/note isolation, JSON precision, mutation guards "
                 "and packaging fixes. All six native targets and sanitizer checks are required on the exact build commit.\n"
             )
-        api(f"repos/{repo}/releases/{component['release_id']}", method="PATCH", data={"target_commitish": sha, "body": body})
+        api(
+            f"repos/{repo}/releases/{component['release_id']}",
+            method="PATCH",
+            data={"tag_name": component["tag"], "target_commitish": sha, "body": body},
+        )
         verify_remote(draft(repo, component), component["assets"])
         tag(repo, component, sha)
         verify_gates(repo, component)
