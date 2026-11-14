@@ -26,6 +26,7 @@ from .doctor import is_weak_secret
 from .editor_call_client import call_client_page, parse_ice_servers
 from .editor_database import browse_rows, database_catalog
 from .editor_identity import EDITOR_PERMISSIONS, EditorAccess, EditorIdentityStore, EditorPrincipal
+from .file_safety import open_lock_file
 from .protection import client_ip, host_allowed, ip_allowed, request_is_https
 from .runtime import ProjectRuntime
 from .settings import Settings
@@ -430,7 +431,7 @@ class EditorControlPlane:
     async def _acquire_project_lock(self, project: Path) -> portalocker.Lock:
         self._lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         name = hashlib.sha256(str(project).encode("utf-8")).hexdigest() + ".lock"
-        lock = portalocker.Lock(self._lock_dir / name, timeout=0)
+        lock = portalocker.Lock(self._lock_dir / name, mode="a+b", timeout=0, opener=open_lock_file)
         deadline = time.monotonic() + 10
         while True:
             try:

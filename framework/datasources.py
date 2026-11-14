@@ -9,6 +9,7 @@ import os
 import secrets
 import socket
 import stat
+from functools import partial
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -18,7 +19,7 @@ import yaml
 from fastapi import HTTPException, Request
 
 from .config import DataSourceConfig, ProjectConfig
-from .file_safety import check_leaf, confined_parent, relative_parts
+from .file_safety import check_leaf, confined_parent, open_lock_file, relative_parts
 from .services.http_client import ResilientHTTPClient, ResponseTooLarge, blocked_network_address
 
 
@@ -212,48 +213,57 @@ class DataSourceManager:
         return {"items": rows[offset : offset + limit], "limit": limit, "offset": offset, "total": len(rows)}
 
     def _mutate_file_sync(self, source: DataSourceConfig, action: str, *, payload: Any = None, item_id: str | None = None) -> Any:
-        path = self._file_path(source)
-        lock = portalocker.Lock(str(path) + ".forge.lock", timeout=source.file_lock_timeout_seconds, check_interval=0.05)
         try:
-            with lock:
-                data = self._read_file_sync(source)
-                if not isinstance(data, list):
-                    raise HTTPException(status_code=422, detail="Writable file data source must contain a list of objects")
-                if action == "create":
-                    if not isinstance(payload, dict):
-                        raise HTTPException(status_code=422, detail="Writable file create payload must be an object")
-                    item = dict(payload)
-                    if source.id_field not in item:
-                        numeric = [x.get(source.id_field) for x in data if isinstance(x, dict) and isinstance(x.get(source.id_field), int)]
-                        item[source.id_field] = (max(numeric) + 1) if numeric else 1
-                    if any(isinstance(x, dict) and str(x.get(source.id_field)) == str(item[source.id_field]) for x in data):
-                        raise HTTPException(status_code=409, detail="Duplicate data-source id")
-                    data.append(item)
-                    self._write_file_sync(source, data)
-                    return item
-                if action in {"update", "replace"}:
-                    if not isinstance(payload, dict):
-                        raise HTTPException(status_code=422, detail="Writable file update payload must be an object")
-                    if source.id_field in payload:
-                        raise HTTPException(status_code=422, detail=f"Field {source.id_field!r} is immutable")
-                    for idx, row in enumerate(data):
-                        if isinstance(row, dict) and str(row.get(source.id_field)) == str(item_id):
-                            immutable_id = row.get(source.id_field)
-                            updated = {**row, **payload} if action == "update" else dict(payload)
-                            updated[source.id_field] = immutable_id
-                            data[idx] = updated
-                            self._write_file_sync(source, data)
-                            return updated
-                    raise HTTPException(status_code=404, detail="Data source item not found")
-                if action == "delete":
-                    new_data = [row for row in data if not (isinstance(row, dict) and str(row.get(source.id_field)) == str(item_id))]
-                    if len(new_data) == len(data):
-                        raise HTTPException(status_code=404, detail="Data source item not found")
-                    self._write_file_sync(source, new_data)
-                    return {"deleted": True}
-                raise RuntimeError(f"Unknown file mutation action: {action}")
+            with confined_parent(self.root, source.file or "") as (parent, name, parent_fd):
+                lock_name = name + ".forge.lock"
+                with portalocker.Lock(
+                    parent / lock_name,
+                    mode="a+b",
+                    timeout=source.file_lock_timeout_seconds,
+                    check_interval=0.05,
+                    opener=partial(open_lock_file, parent_fd=parent_fd),
+                ):
+                    return self._mutate_locked(source, action, payload=payload, item_id=item_id)
         except portalocker.exceptions.AlreadyLocked as exc:
             raise HTTPException(status_code=503, detail="Data source file is busy", headers={"Retry-After": "1"}) from exc
+
+    def _mutate_locked(self, source: DataSourceConfig, action: str, *, payload: Any, item_id: str | None) -> Any:
+        data = self._read_file_sync(source)
+        if not isinstance(data, list):
+            raise HTTPException(status_code=422, detail="Writable file data source must contain a list of objects")
+        if action == "create":
+            if not isinstance(payload, dict):
+                raise HTTPException(status_code=422, detail="Writable file create payload must be an object")
+            item = dict(payload)
+            if source.id_field not in item:
+                numeric = [x.get(source.id_field) for x in data if isinstance(x, dict) and isinstance(x.get(source.id_field), int)]
+                item[source.id_field] = (max(numeric) + 1) if numeric else 1
+            if any(isinstance(x, dict) and str(x.get(source.id_field)) == str(item[source.id_field]) for x in data):
+                raise HTTPException(status_code=409, detail="Duplicate data-source id")
+            data.append(item)
+            self._write_file_sync(source, data)
+            return item
+        if action in {"update", "replace"}:
+            if not isinstance(payload, dict):
+                raise HTTPException(status_code=422, detail="Writable file update payload must be an object")
+            if source.id_field in payload:
+                raise HTTPException(status_code=422, detail=f"Field {source.id_field!r} is immutable")
+            for idx, row in enumerate(data):
+                if isinstance(row, dict) and str(row.get(source.id_field)) == str(item_id):
+                    immutable_id = row.get(source.id_field)
+                    updated = {**row, **payload} if action == "update" else dict(payload)
+                    updated[source.id_field] = immutable_id
+                    data[idx] = updated
+                    self._write_file_sync(source, data)
+                    return updated
+            raise HTTPException(status_code=404, detail="Data source item not found")
+        if action == "delete":
+            new_data = [row for row in data if not (isinstance(row, dict) and str(row.get(source.id_field)) == str(item_id))]
+            if len(new_data) == len(data):
+                raise HTTPException(status_code=404, detail="Data source item not found")
+            self._write_file_sync(source, new_data)
+            return {"deleted": True}
+        raise RuntimeError(f"Unknown file mutation action: {action}")
 
     async def create(self, source: DataSourceConfig, payload: Any) -> Any:
         if not source.writable or source.type not in {"json_file", "yaml_file"}:

@@ -41,7 +41,7 @@ def check_leaf(parent: Path, name: str, fd: int | None) -> os.stat_result | None
         info = os.stat(name, dir_fd=fd, follow_symlinks=False) if fd is not None else (parent / name).lstat()
     except FileNotFoundError:
         return None
-    if not stat.S_ISREG(info.st_mode):
+    if not stat.S_ISREG(info.st_mode) or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
         raise HTTPException(400, "File must be regular and may not be a symbolic link")
     return info
 
@@ -84,3 +84,19 @@ def confined_parent(root: Path, relative: str, *, create: bool = False):
     finally:
         if fd is not None:
             os.close(fd)
+
+
+def open_lock_file(path: str, flags: int, *, parent_fd: int | None = None) -> int:
+    """Open an existing or new lock file without truncating or following its final component."""
+    target = Path(path)
+    check_leaf(target.parent, target.name, parent_fd)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    fd = os.open(target.name if parent_fd is not None else path, flags, 0o600, dir_fd=parent_fd)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise HTTPException(400, "Lock file must be regular and may not be linked")
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd

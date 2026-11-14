@@ -133,6 +133,22 @@ def test_datasources_file_read_query_and_mutations(tmp_path):
     asyncio.run(run())
 
 
+def test_datasource_mutation_rejects_linked_lock(tmp_path):
+    manager = DataSourceManager(_project(tmp_path))
+    (tmp_path / "items.json").write_text("[]", encoding="utf-8")
+    unrelated = tmp_path / "unrelated.txt"
+    unrelated.write_text("preserve this file", encoding="utf-8")
+    try:
+        (tmp_path / "items.json.forge.lock").symlink_to(unrelated)
+    except OSError:
+        pytest.skip("This account cannot create a symlink")
+    source = DataSourceConfig(name="items", type="json_file", file="items.json", public=True, public_write=True, writable=True)
+    with pytest.raises(HTTPException, match="symbolic link"):
+        asyncio.run(manager.create(source, {"name": "blocked"}))
+    assert unrelated.read_text(encoding="utf-8") == "preserve this file"
+    assert (tmp_path / "items.json").read_text(encoding="utf-8") == "[]"
+
+
 def test_cache_singleflight_stale_and_generation():
     async def run():
         backend = MemoryTTLCache(max_entries=2)
